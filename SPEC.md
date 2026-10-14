@@ -1,11 +1,12 @@
 # Italian Learning Application Specification
 
-Status: **Complete review copy — awaiting final approval for implementation**
+Status: **Approved — source of truth for development**
 
-This document records confirmed requirements, proposals, and unanswered questions.
-It becomes the source of truth for development only after the user explicitly
-approves the completed specification. No application code is authorized during
-specification discovery.
+This user-approved specification is the source of truth for development.
+It records confirmed requirements, bounded implementation decisions, and explicitly
+deferred work. The user approved the completed specification and requested that
+it be pushed to the project repository. Application code had not been written
+when approval was granted.
 
 ## 1. Requirement status and approval
 
@@ -125,7 +126,7 @@ is made, record the answer, affected sections, and acceptance criteria here.
   Releases for macOS DMG/Windows installers; install updates only with user approval;
   MIT for original code and CC BY 4.0 for eligible original curriculum/media.
 
-These individual decisions are approved, while the overall specification is not.
+Both the individual decisions and this completed specification are approved.
 The current behaviors below are confirmed except where explicitly labeled as
 recommendations, unresolved decisions, or deferred work. Implementation selection
 within R-07 does not authorize expanding scope or relaxing agreed budgets.
@@ -141,7 +142,7 @@ leaderboards. Offline leaderboard contributions synchronize after reconnection.
 **Unresolved product decisions:** None blocking this completed specification.
 The user has explicitly delegated bounded technical/content choices and deferred
 later editorial/public-host decisions under R-07. Final specification approval
-is still required before application code.
+has been granted; development must follow the confirmed requirements below.
 
 **Deferred or bounded work:** Brand name/artwork, later interface localization,
 public audience/capacity commitments, human review staffing, signing/funding, and
@@ -878,7 +879,7 @@ existing performance measurements:
 If a candidate cannot satisfy an agreed budget or quality gate, record evidence
 and ask for a revised choice instead of quietly relaxing the specification.
 Brand name and final artwork are explicitly deferred editorial choices. The
-overall specification still requires final approval.
+overall specification is approved; changes to agreed behavior require clarification.
 
 **Unresolved product decisions:** None blocking the specification. GitHub
 repository, licenses, installers, and explicit update consent are confirmed.
@@ -1086,7 +1087,7 @@ that authorize silent feature changes.
 
 ### Specification approval gate
 
-The specification is complete for final review. Its required review checks are:
+The completed specification has received final user approval. Review checks:
 
 - Required launch behavior and explicitly deferred features are recorded.
 - Necessary product and technical decisions are resolved or explicitly accepted
@@ -1094,13 +1095,16 @@ The specification is complete for final review. Its required review checks are:
 - Architecture, curriculum, UX, data, audio, speech, AI, testing, and deployment
   sections contain concrete contracts and acceptance criteria.
 - Feasibility and cost implications are documented against the free/offline goals.
-- Final approval remains pending: the user must explicitly approve this completed
-  document before application code. Approvals of individual proposals are recorded
-  separately from this final gate.
+- Final approval was granted after the completed specification was presented;
+  the user replied, "yes push to the repo". This supersedes the earlier pending
+  approval status without changing the confirmed product requirements.
 
-Approval: **Not yet granted. Present this completed review copy for final approval.
-No application code has been written.**
+Approval: **Granted by the user: "yes push to the repo".**
 
-After approval, implementation changes must remain traceable to this document.
+This approval establishes the development baseline. No application code was
+written before approval. The subsequent "continue" instruction authorized
+completion of the interrupted approval-recording and repository update.
+
+Implementation changes must remain traceable to this document.
 New product choices require clarification, and accepted changes must be recorded
 here so the specification continues to reflect the agreed behavior.
