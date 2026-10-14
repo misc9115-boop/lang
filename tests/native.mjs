@@ -49,7 +49,9 @@ async function request(method, route, body) {
   return result.value;
 }
 async function wait(check, message) {
-  for (let i = 0; i < 150; i++) {
+  const deadline = Date.now() + 30000;
+  let lastError;
+  while (Date.now() < deadline) {
     if (exitCode !== undefined)
       throw new Error(
         `Native app exited (${exitCode}). See ${path.join(root, "native.log")}`,
@@ -57,11 +59,11 @@ async function wait(check, message) {
     try {
       if (await check()) return;
     } catch (e) {
-      if (i === 149) throw e;
+      lastError = e;
     }
     await pause(200);
   }
-  throw new Error(message);
+  throw new Error(`${message}${lastError ? `: ${lastError}` : ""}`);
 }
 async function script(code, args = []) {
   return request("POST", `/session/${sessionId}/execute/sync`, {
@@ -177,8 +179,12 @@ try {
   await click("Cancel restore");
   assert.equal((await invoke("app_state")).settings.level, "C2");
   await click("Preview recovery copy");
-  await script(
-    'const label=[...document.querySelectorAll("label")].find(l=>l.innerText.includes("I understand this replaces"));label.querySelector("input").click();',
+  await wait(
+    () =>
+      script(
+        'const label=[...document.querySelectorAll("label")].find(l=>l.textContent.replace(/\\s+/g," ").includes("I understand this replaces"));const field=label?.querySelector("input");if(!field||field.disabled)return false;if(!field.checked)field.click();return field.checked;',
+      ),
+    "Restore confirmation did not become usable",
   );
   await click("Restore this backup");
   await textIncludes("Backup restored.");
