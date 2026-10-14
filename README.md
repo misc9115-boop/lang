@@ -80,9 +80,11 @@ ordering, reveal, summary, draft-credit exclusion, themes and enlarged text.
 Backup checks use real archives and transactions with a test file-selection
 adapter; they cover cancellation, replacement, recovery and corruption.
 The driver and transport are not part of the packaged app. Ports 1420, 1421 and
-(on Windows) 19223 must be free. On Windows the runner uses installed Chrome or
-Edge, or `LANG_TEST_BROWSER_PATH`; on macOS install the test browser first with
-`npx playwright install chromium`. `LANG_TEST_CDP_URL` can point to a separately
+(on Windows with an explicit browser override) 19223 must be free. Install the
+test browser first with `npx playwright install chromium`. The default is
+Playwright's downloaded Chromium with its browser sandbox enabled;
+`LANG_TEST_BROWSER_PATH` can explicitly select Chrome/Edge on Windows.
+`LANG_TEST_CDP_URL` can point to a separately
 started test browser. Screenshots go to ignored `test-results/`.
 
 The native smoke test builds an explicitly enabled debug-only WebDriver feature,

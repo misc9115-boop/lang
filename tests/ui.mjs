@@ -38,15 +38,16 @@ try {
   await waitFor("http://127.0.0.1:1421/health");
   if (process.env.LANG_TEST_CDP_URL) {
     browser = await chromium.connectOverCDP(process.env.LANG_TEST_CDP_URL);
-  } else if (process.platform === "win32") {
+  } else if (
+    process.platform === "win32" &&
+    process.env.LANG_TEST_BROWSER_PATH
+  ) {
     // Ignored stdio also works in desktop sandboxes that prohibit child pipes.
-    const executable =
-      process.env.LANG_TEST_BROWSER_PATH ||
-      [
-        "C:/Program Files/Google/Chrome/Application/chrome.exe",
-        "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-      ].find(existsSync);
-    assert.ok(executable, "Install Chrome/Edge or set LANG_TEST_BROWSER_PATH");
+    const executable = process.env.LANG_TEST_BROWSER_PATH;
+    assert.ok(
+      existsSync(executable),
+      "LANG_TEST_BROWSER_PATH must name a browser",
+    );
     browserDirectory = mkdtempSync(path.join(tmpdir(), "lang-ui-"));
     browserProcess = spawn(
       executable,
@@ -64,7 +65,7 @@ try {
     await waitFor("http://127.0.0.1:19223/json/version");
     browser = await chromium.connectOverCDP("http://127.0.0.1:19223");
   } else {
-    browser = await chromium.launch();
+    browser = await chromium.launch({ chromiumSandbox: true });
   }
 
   const context = await browser.newContext({
