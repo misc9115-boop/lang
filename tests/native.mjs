@@ -104,6 +104,7 @@ async function fill(selector, text) {
   );
 }
 async function start() {
+  console.log("Launching isolated native test process");
   exitCode = undefined;
   log = openSync(path.join(root, "native.log"), "a");
   processHandle = spawn(executable, [], {
@@ -127,12 +128,19 @@ async function start() {
     });
     return r.ok;
   }, "Native test server did not start");
-  const session = await request("POST", "/session", {
-    capabilities: {
-      alwaysMatch: { "wdio:tauriServiceOptions": { windowLabel: "main" } },
-    },
-  });
-  sessionId = session.sessionId;
+  // The driver starts before Tauri creates its window. Its individual session
+  // request waits ten seconds; keep checking actual window readiness within the
+  // overall bounded startup wait (including a cold WebView2 initialization).
+  await wait(async () => {
+    const session = await request("POST", "/session", {
+      capabilities: {
+        alwaysMatch: { "wdio:tauriServiceOptions": { windowLabel: "main" } },
+      },
+    });
+    sessionId = session.sessionId;
+    return !!sessionId;
+  }, "Native window did not become available");
+  console.log("Native WebView session ready");
 }
 async function stop() {
   if (sessionId) {
@@ -200,6 +208,9 @@ try {
   );
   assert.equal(recovery.body.data.settings.level, "C2");
   assert.equal(recovery.body.data.sessions.length, 0);
+  console.log(
+    "PASS native IPC, preview, cancel, restore and recovery contents",
+  );
   await click("Learn");
   await click("Resume saved lesson →");
   await textIncludes("Translate into Italian.");
