@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Geometric development placeholder; final branding is deferred in SPEC.md. -->
+  <rect width="256" height="256" rx="64" fill="#286347"/>
+  <path d="M60 108h24v88H60zm0-44h24v24H60zm61 19h25v25h35v22h-35v30c0 11 4 16 15 16h20v20h-25c-25 0-35-13-35-36v-30h-16v-22h16z" fill="#fff"/>
+  <circle cx="205" cy="187" r="12" fill="#f2b881"/>
+</svg>

@@ -1,0 +1,79 @@
+{
+  "id": "dev.a1.cafe",
+  "version": 1,
+  "level": "A1",
+  "title": "At the café",
+  "objective": "Development fixture: exercise controls, retries, resume, and evidence storage.",
+  "editorialStatus": "draft",
+  "license": "CC-BY-4.0; original AI-drafted fixture, not linguistically reviewed",
+  "exercises": [
+    {
+      "id": "dev.cafe.choice",
+      "kind": "choice",
+      "instruction": "Choose the English meaning.",
+      "prompt": "Un caffè, per favore.",
+      "context": null,
+      "options": [
+        { "id": "a", "text": "A coffee, please." },
+        { "id": "b", "text": "Good evening." },
+        { "id": "c", "text": "The bill, please." }
+      ],
+      "accepted": ["A coffee, please."],
+      "hint": "Look for the polite request: per favore.",
+      "explanation": "Un caffè means a coffee; per favore means please."
+    },
+    {
+      "id": "dev.cafe.translation",
+      "kind": "translation",
+      "instruction": "Translate into Italian.",
+      "prompt": "A coffee, please.",
+      "context": null,
+      "options": [],
+      "accepted": ["Un caffè, per favore", "Un caffè per favore"],
+      "hint": "Coffee is caffè, with a final accent.",
+      "explanation": "Un caffè, per favore. The accent in caffè remains meaningful in this fixture."
+    },
+    {
+      "id": "dev.cafe.order",
+      "kind": "ordering",
+      "instruction": "Put the words in order.",
+      "prompt": "The bill, please.",
+      "context": null,
+      "options": [
+        { "id": "please", "text": "favore" },
+        { "id": "bill", "text": "conto," },
+        { "id": "the", "text": "Il" },
+        { "id": "per", "text": "per" }
+      ],
+      "accepted": ["Il conto, per favore"],
+      "hint": "Begin with Il conto.",
+      "explanation": "Il conto, per favore is a request for the bill."
+    },
+    {
+      "id": "dev.cafe.cloze",
+      "kind": "cloze",
+      "instruction": "Type the missing Italian word.",
+      "prompt": "Un caffè, per ___.",
+      "context": null,
+      "options": [],
+      "accepted": ["favore"],
+      "hint": "The complete expression means please.",
+      "explanation": "The expression is per favore."
+    },
+    {
+      "id": "dev.cafe.reading",
+      "kind": "reading",
+      "instruction": "Read the dialogue and answer in English.",
+      "prompt": "What does the customer order?",
+      "context": "Cliente: Buongiorno. Un caffè, per favore.\nBarista: Certo!",
+      "options": [
+        { "id": "coffee", "text": "A coffee" },
+        { "id": "tea", "text": "A tea" },
+        { "id": "water", "text": "Water" }
+      ],
+      "accepted": ["A coffee"],
+      "hint": "The customer says un caffè.",
+      "explanation": "The customer orders a coffee: un caffè."
+    }
+  ]
+}
