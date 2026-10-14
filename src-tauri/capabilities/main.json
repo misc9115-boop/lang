@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Only the local application window can use the learning commands. No shell, filesystem, SQL, or network plugin is exposed.",
+  "windows": ["main"],
+  "permissions": []
+}

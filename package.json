@@ -1,0 +1,32 @@
+{
+  "name": "lang-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "build": "npm run check && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "test:ui": "cargo build -p learning-core --example ui_driver --locked && node tests/ui.mjs",
+    "test:serve": "cargo build -p learning-core --example ui_driver --locked && node tests/serve-ui.mjs",
+    "test:core": "cargo test -p learning-core --locked",
+    "test": "npm run check && npm run test:core && npm run test:ui"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.12.4",
+    "svelte": "5.57.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@tauri-apps/cli": "2.12.3",
+    "prettier": "3.9.10",
+    "prettier-plugin-svelte": "4.1.1",
+    "svelte-check": "4.7.6",
+    "typescript": "5.9.3",
+    "vite": "8.3.4"
+  }
+}
