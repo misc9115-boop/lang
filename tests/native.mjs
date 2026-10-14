@@ -183,6 +183,17 @@ try {
   await click("Restore this backup");
   await textIncludes("Backup restored.");
   assert.equal((await invoke("app_state")).settings.level, "A1");
+  const recoveryCopies = await invoke("list_recovery_backups");
+  assert.equal(recoveryCopies.length, 2);
+  const created = recoveryCopies.find(
+    (entry) => entry.id !== "pre-import-native-fixture.langbackup",
+  );
+  assert.ok(created, "Restore must create a separate recovery archive");
+  const recovery = JSON.parse(
+    readFileSync(path.join(root, "backups", created.id), "utf8"),
+  );
+  assert.equal(recovery.body.data.settings.level, "C2");
+  assert.equal(recovery.body.data.sessions.length, 0);
   await click("Learn");
   await click("Resume saved lesson →");
   await textIncludes("Translate into Italian.");

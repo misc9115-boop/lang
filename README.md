@@ -87,8 +87,9 @@ started test browser. Screenshots go to ignored `test-results/`.
 
 The native smoke test builds an explicitly enabled debug-only WebDriver feature,
 uses actual WebView/IPC/SQLite, and checks recovery plus saved drafts after an
-application restart. It uses an isolated profile and WebView storage under
-`test-results/`; it never opens the normal learner database. Port 19445 must be
+application restart. It uses an isolated SQLite profile under `test-results/`
+and an ephemeral WebView (also a separate data directory on Windows); it never
+opens the normal learner database. Port 19445 must be
 free. The driver binds only to loopback and cannot compile into a release build.
 It does not automate native open/save dialogs. Logs, status and screenshots are
 kept in `test-results/` for diagnosis. A failed native startup fails the test;

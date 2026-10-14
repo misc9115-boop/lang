@@ -114,7 +114,13 @@ fn main() {
             directory.is_absolute(),
             "Native test data directory must be absolute"
         );
-        context.config_mut().app.windows[0].data_directory = Some(directory.join("webview"));
+        // WKWebView ignores data_directory; ephemeral webview storage also keeps
+        // native tests isolated on macOS. Learner SQLite remains in the test root.
+        context.config_mut().app.windows[0].incognito = true;
+        #[cfg(not(target_os = "macos"))]
+        {
+            context.config_mut().app.windows[0].data_directory = Some(directory.join("webview"));
+        }
     }
     builder
         .setup(|app| {
