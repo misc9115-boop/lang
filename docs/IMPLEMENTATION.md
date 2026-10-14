@@ -30,7 +30,12 @@ inject the Rust test driver's transport.
 - Playwright for browser integration, tiny_http only as a development dependency
   for the disposable driver. No driver is linked into the desktop application.
 - Rust standard unit tests, rustfmt and clippy; pinned-action Windows/macOS CI.
-  These are tooling selections, not proof that remote CI or every target passed.
+- Rust-only Tauri dialog plugin 2.8.3 for backup file selection; SHA-256 for
+  archive integrity and tempfile for durable new-file writes.
+- Optional WebDriver plugin 1.5.0 is enabled only by `native-test`. A compile-time
+  guard forbids that feature in release builds. Test storage and WebView data are
+  isolated from the normal profile; no test-only file-selection IPC is added to
+  the application.
 
 Configuration follows the official [Tauri Vite integration](https://v2.tauri.app/start/frontend/vite/)
 and [typed command boundary](https://v2.tauri.app/develop/calling-rust/).
@@ -44,7 +49,8 @@ SQLite `PRAGMA user_version=1`. Creation is transactional and foreign keys are
 enabled. Unknown newer schema versions are rejected before learner writes.
 There are no data-transforming migrations yet. Any future migration must add a
 validated pre-migration backup and recovery tests; downgrades to incompatible
-schemas are refused. No backup or import feature is claimed in this milestone.
+schemas are refused. Versioned export/import and pre-import recovery are now
+implemented; the full contract and limits are in [BACKUPS.md](BACKUPS.md).
 
 | Table          | Purpose/invariant                                                                                                          |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------- |
@@ -139,7 +145,7 @@ Development checks are recorded separately from full acceptance gates:
   Vite's optional mapped-drive `net use` probe also needed an environment-only
   guard for synchronous child-pipe denial. These are not product configuration.
 
-- Final core test pass: **15 passed, 0 failed**, including injected-award-failure
+- Foundation core test pass: **15 passed, 0 failed**, including injected-award-failure
   rollback (completion, day and achievement all remain unchanged) and preserving
   an active lesson snapshot across a content version update.
 - `cargo clippy --workspace --all-targets --locked -- -D warnings` passed.
@@ -148,7 +154,31 @@ Development checks are recorded separately from full acceptance gates:
   rebuild after source changes). This verifies compilation, not native runtime.
 - Native `cargo check -p lang-desktop --release --locked` passed, including the
   non-debug code path that excludes the embedded development lesson fixture.
-- No changes to the approved SPEC.md; no remote push or release performed.
+- The foundation was published and merged in [PR #1](https://github.com/misc9115-boop/lang/pull/1).
+  Its Windows/macOS CI passed core tests, the unattended browser integration,
+  frontend/native builds and release compilation. Those checks did not run a
+  native application or establish minimum-OS/resource-budget support.
+- No changes to the approved SPEC.md; no public release performed.
+
+### Backup/recovery increment
+
+- Local verification: **30 core tests and 1 desktop path-validation test passed**;
+  frontend build has zero Svelte errors/warnings; rustfmt and Clippy passed for
+  the normal workspace and the optional native-test feature.
+- Core tests cover round-trip settings, saved drafts, attempts and earned credit;
+  recovery contents; corrupt or unsupported archives; altered evidence; untrusted
+  reviewed-content claims; stale previews; one-use/cancelled tokens; overwrite
+  refusal; oversized input; failed recovery writes; and transaction rollback.
+- Connected-browser checks against the real SQLite driver exercised export,
+  disabled confirmation, cancellation, replacement, and restoring the pre-import
+  copy. Only native file selection was replaced by the test adapter.
+- Windows native-test executable compiled. Two attempts to run the smoke test
+  on this execution host failed during Tauri setup with `Access is denied.
+(os error 5)`, before the application database was created. Tauri creates its
+  configured window before the application's setup callback. The precise OS
+  denial has not been isolated; native startup/IPC and dialogs are unverified here.
+- The Windows/macOS workflow now includes the native smoke test. Adding a test
+  to CI does not establish that it has passed; inspect the current run separately.
 
 No installer, native end-to-end,
 macOS/ARM, offline-media, speech, AI-quality, complete accessibility, minimum-OS,
@@ -156,12 +186,12 @@ reference-hardware or resource-budget gate has been claimed as passed.
 
 ## Next implementation work
 
-1. Validate native startup and IPC on the supported hosts, automate native flows,
-   and add backup/recovery primitives before introducing migration/import.
+1. Pass native startup, IPC and restart checks on the supported hosts; verify
+   native file dialogs and recovery manually, then extend failure/crash coverage.
 2. Define a versioned objective/skill manifest and signed-off content-pack format,
    author reviewed lessons and track real editorial provenance.
 3. Implement FSRS review, full exercises/media and accessible alternatives,
-   resource-controlled pack management, and backups.
+   resource-controlled pack management, and tested pre-migration recovery.
 4. Implement independent leaderboard and text/voice conversation adapters, with
    privacy, cancellation, credential/outbox and real-service tests.
 5. Finish full beginner–C2 coverage and all public-release gates in SPEC.md.

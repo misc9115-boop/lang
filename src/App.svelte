@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import BackupPanel from "./BackupPanel.svelte";
   import {
     command,
     coverage,
@@ -22,7 +23,7 @@
   let tiles = $state<string[]>([]);
   let report = $state("");
   let reportOpen = $state(false);
-  let settings = $state<Settings>({
+  const defaultSettings = (): Settings => ({
     level: "Beginner",
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     dailyGoal: 10,
@@ -30,6 +31,7 @@
     reducedMotion: false,
     textScale: 100,
   });
+  let settings = $state<Settings>(defaultSettings());
   let draftWrites: Promise<void> = Promise.resolve();
   let draftFailure = "";
   let focusTarget = $state<HTMLHeadingElement>();
@@ -52,8 +54,7 @@
   );
 
   $effect(() => {
-    const current = app?.settings;
-    if (!current) return;
+    const current = app?.settings ?? defaultSettings();
     document.documentElement.dataset.theme = current.theme;
     document.documentElement.dataset.reducedMotion = String(
       current.reducedMotion,
@@ -327,8 +328,8 @@
             motion</label
           >
           <p class="muted">
-            Optional placement, reminders, downloads, and backups are planned in
-            the approved spec and are not implemented in this build.
+            Optional placement, reminders, and downloads are planned in the
+            approved spec and are not implemented in this build.
           </p>
           <button class="primary" disabled={busy}
             >{busy
@@ -340,6 +341,18 @@
             ></button
           >
         </form>
+        <BackupPanel
+          {busy}
+          run={act}
+          onRestored={(state) => {
+            app = state;
+            session = null;
+            settings = state.settings
+              ? { ...state.settings }
+              : defaultSettings();
+            page = "settings";
+          }}
+        />
       </section>
     {:else if page === "learn"}
       <section class="page-heading">

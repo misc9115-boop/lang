@@ -17,9 +17,9 @@ fn decode<T: serde::de::DeserializeOwned>(value: &str) -> Result<T> {
 }
 
 pub struct Store {
-    connection: Connection,
-    lessons: Vec<Lesson>,
-    development_build: bool,
+    pub(crate) connection: Connection,
+    pub(crate) lessons: Vec<Lesson>,
+    pub(crate) development_build: bool,
 }
 
 impl Store {
@@ -33,7 +33,7 @@ impl Store {
         Self::initialize(Connection::open_in_memory().map_err(error)?, lessons, true)
     }
 
-    fn initialize(
+    pub(crate) fn initialize(
         mut connection: Connection,
         lessons: Vec<Lesson>,
         development_build: bool,
@@ -457,7 +457,7 @@ impl Store {
     }
 }
 
-fn validate_settings(settings: &Settings) -> Result<()> {
+pub(crate) fn validate_settings(settings: &Settings) -> Result<()> {
     if !LEVELS.contains(&settings.level.as_str()) {
         return Err("Choose Beginner or a CEFR level from A1 through C2.".into());
     }
@@ -477,7 +477,7 @@ fn validate_settings(settings: &Settings) -> Result<()> {
     Ok(())
 }
 
-fn validate_lesson(lesson: &Lesson) -> Result<()> {
+pub(crate) fn validate_lesson(lesson: &Lesson) -> Result<()> {
     if lesson.id.is_empty()
         || lesson.version == 0
         || lesson.exercises.is_empty()

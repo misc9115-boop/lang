@@ -12,6 +12,7 @@
     "tauri": "tauri",
     "test:ui": "cargo build -p learning-core --example ui_driver --locked && node tests/ui.mjs",
     "test:serve": "cargo build -p learning-core --example ui_driver --locked && node tests/serve-ui.mjs",
+    "test:native": "npm run build && cargo build -p lang-desktop --features native-test,tauri/custom-protocol --locked && cargo build -p learning-core --example ui_driver --locked && node tests/native.mjs",
     "test:core": "cargo test -p learning-core --locked",
     "test": "npm run check && npm run test:core && npm run test:ui"
   },

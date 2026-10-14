@@ -66,6 +66,20 @@ export type AppState = {
   progress: Progress;
   developmentBuild: boolean;
 };
+export type BackupTicket = {
+  token: string;
+  preview: {
+    createdAt: string;
+    level: string | null;
+    totalXp: number;
+    completedLessons: number;
+    sessionCount: number;
+    activeLesson: string | null;
+    development: boolean;
+    fingerprint: string;
+  };
+};
+export type RecoveryEntry = { id: string; savedAt: string };
 
 export async function command<T>(
   name: string,
