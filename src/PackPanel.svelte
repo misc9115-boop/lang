@@ -21,16 +21,20 @@
   let decision = $state<{ action: string; record: PackRecord } | null>(null);
   let message = $state("");
   let error = $state("");
+  let loading = $state(true);
   let heading = $state<HTMLHeadingElement>();
   let chooseButton = $state<HTMLButtonElement>();
   const size = (bytes: number) =>
     `${(bytes / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} KiB`;
   async function refresh() {
+    loading = true;
     try {
       catalogue = await command<PackState>("pack_state");
       error = "";
     } catch (e) {
       error = String(e);
+    } finally {
+      loading = false;
     }
   }
   onMount(() => {
@@ -195,7 +199,10 @@
       </div>
     </section>
   {/if}
-  {#if !catalogue.entries.length}<p>
+  {#if loading}<p role="status">
+      Checking installed packs…
+    </p>{:else if !error && !catalogue.issues.length && !catalogue.entries.length}<p
+    >
       No packs have been installed in this catalogue.
     </p>{/if}
   <ul class="packs">
