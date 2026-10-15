@@ -233,8 +233,12 @@ try {
     ),
     true,
   );
-  await script(
-    'const label=[...document.querySelectorAll("label")].find(l=>l.textContent.includes("Confirm this pack change."));label.querySelector("input").click();',
+  await wait(
+    () =>
+      script(
+        'const label=[...document.querySelectorAll("label")].find(l=>l.textContent.replace(/\\s+/g," ").includes("Confirm this pack change."));const field=label?.querySelector("input");if(!field||field.disabled)return false;if(!field.checked)field.click();return field.checked;',
+      ),
+    "Pack confirmation did not become usable",
   );
   await click("Confirm pack change");
   await textIncludes("Selected content is ready for offline study.");
