@@ -1,0 +1,2 @@
+# Fixture hashes are over exact bytes; keep checked-in JSON identical on both OSes.
+content/**/*.json text eol=lf

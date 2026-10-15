@@ -1,0 +1,146 @@
+{
+  "format": "lang-curriculum-pack",
+  "language": "it",
+  "instructionLanguage": "en",
+  "formatVersion": 1,
+  "lessonSchemaVersion": 1,
+  "minReaderVersion": 1,
+  "maxReaderVersion": 1,
+  "id": "dev.pack.cafe",
+  "version": 1,
+  "title": "Development café controls — unreviewed fixture",
+  "scope": "development_fixture",
+  "editorialStatus": "draft",
+  "provenance": {
+    "origin": "original_ai_draft",
+    "license": "CC-BY-4.0; original AI-drafted fixture, not linguistically reviewed",
+    "attribution": "lang contributors; original AI-drafted development café fixture, version 1; unreviewed.",
+    "source": null
+  },
+  "reviews": [],
+  "curriculum": {
+    "schemaVersion": 1,
+    "id": "dev.objectives.cafe",
+    "version": 1,
+    "objectives": [
+      {
+        "id": "dev.cafe.objective.reading-controls",
+        "level": "A1",
+        "description": "Development-only mapping for text recognition and ordering controls in the existing café fixture; not an approved CEFR objective.",
+        "strands": ["vocabulary", "reading", "dialogues"],
+        "skills": ["reading"],
+        "required": true,
+        "recommendedPrerequisites": []
+      },
+      {
+        "id": "dev.cafe.objective.written-controls",
+        "level": "A1",
+        "description": "Development-only mapping for short typed Italian answers in the existing café fixture; not advanced writing or an approved CEFR objective.",
+        "strands": ["vocabulary", "writing"],
+        "skills": ["writing"],
+        "required": true,
+        "recommendedPrerequisites": ["dev.cafe.objective.reading-controls"]
+      }
+    ],
+    "targets": [
+      {
+        "id": "dev.cafe.sense.caffe-drink",
+        "kind": "vocabulary_sense",
+        "description": "Unreviewed fixture sense: caffè, coffee as a drink."
+      },
+      {
+        "id": "dev.cafe.sense.conto-bill",
+        "kind": "vocabulary_sense",
+        "description": "Unreviewed fixture sense: conto, the bill in the café context."
+      }
+    ],
+    "units": [
+      {
+        "id": "dev.unit.cafe",
+        "level": "A1",
+        "title": "Development café controls",
+        "lessonIds": ["dev.a1.cafe"]
+      }
+    ]
+  },
+  "lessons": [
+    {
+      "lessonId": "dev.a1.cafe",
+      "unitId": "dev.unit.cafe",
+      "file": {
+        "path": "cafe.json",
+        "bytes": 2726,
+        "sha256": "fd8333bb20584d20c88e2b70b8fdaba0b8f113752264e9ef4aba071de1103498"
+      },
+      "provenance": {
+        "origin": "original_ai_draft",
+        "license": "CC-BY-4.0; original AI-drafted fixture, not linguistically reviewed",
+        "attribution": "lang contributors; original AI-drafted development café fixture, version 1; unreviewed.",
+        "source": null
+      },
+      "objectiveIds": [
+        "dev.cafe.objective.reading-controls",
+        "dev.cafe.objective.written-controls"
+      ],
+      "vocabularySenseIds": [
+        "dev.cafe.sense.caffe-drink",
+        "dev.cafe.sense.conto-bill"
+      ],
+      "grammarTargetIds": [],
+      "recommendedPriorKnowledge": [],
+      "estimatedMinutes": null,
+      "exercises": [
+        {
+          "exerciseId": "dev.cafe.choice",
+          "objectives": [
+            {
+              "objectiveId": "dev.cafe.objective.reading-controls",
+              "testedSkills": ["reading"]
+            }
+          ],
+          "translationDirection": null
+        },
+        {
+          "exerciseId": "dev.cafe.translation",
+          "objectives": [
+            {
+              "objectiveId": "dev.cafe.objective.written-controls",
+              "testedSkills": ["writing"]
+            }
+          ],
+          "translationDirection": "english_to_italian"
+        },
+        {
+          "exerciseId": "dev.cafe.order",
+          "objectives": [
+            {
+              "objectiveId": "dev.cafe.objective.reading-controls",
+              "testedSkills": ["reading"]
+            }
+          ],
+          "translationDirection": null
+        },
+        {
+          "exerciseId": "dev.cafe.cloze",
+          "objectives": [
+            {
+              "objectiveId": "dev.cafe.objective.written-controls",
+              "testedSkills": ["writing"]
+            }
+          ],
+          "translationDirection": null
+        },
+        {
+          "exerciseId": "dev.cafe.reading",
+          "objectives": [
+            {
+              "objectiveId": "dev.cafe.objective.reading-controls",
+              "testedSkills": ["reading"]
+            }
+          ],
+          "translationDirection": null
+        }
+      ]
+    }
+  ]
+}

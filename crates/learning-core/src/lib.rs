@@ -1,4 +1,5 @@
 mod backup;
+pub mod content;
 mod model;
 mod scoring;
 mod store;
