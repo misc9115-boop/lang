@@ -4,6 +4,8 @@ mod model;
 pub mod pack_library;
 mod scoring;
 mod store;
+mod workspace;
+pub use workspace::{lock_profile, PackRecord, PackState, PackTicket, StudyWorkspace};
 
 pub use backup::{
     read_backup_file, write_new_backup, BackupController, BackupPreview, BackupTicket,

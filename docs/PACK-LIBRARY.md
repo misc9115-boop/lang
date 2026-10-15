@@ -2,9 +2,11 @@
 
 Implementation decision under SPEC.md §§3, 11–12 / AC-03, 2026-10-15.
 The core API and developer CLI now install validated directory-based **text**
-packs into a separate SQLite content catalogue. Desktop pack settings, native
-folder selection, downloads, media and backup pack-reference integration remain
-subsequent work. The desktop still uses its embedded development fixture.
+packs into a separate SQLite content catalogue. Desktop Settings connects the
+library through native folder selection, previews, activation/deactivation and
+removal. Typed backup references and trusted historical lesson validation are
+connected. Downloads and media remain subsequent work. With no pack selected,
+debug builds still provide the embedded fixture; release builds have no draft fallback.
 
 ## Try the actual library
 
@@ -86,7 +88,10 @@ identity and the entire content contract are then verified again.
 
 - New versions of a pack ID must exceed its recorded maximum. Explicit activation
   can roll back to an intact retained version. Installing an unknown lower version
-  is rejected; an exact recorded historical version can be reinstalled.
+  is rejected by the basic CLI install command; an exact recorded historical
+  version can be reinstalled. Desktop confirmed previews also permit caching an
+  unknown older version for recovery. This never activates it, changes an existing
+  identity/digest or permits a new higher version to regress lesson/curriculum IDs.
 - A recorded pack ID/version is bound to its exact manifest digest. Changed bytes
   require a new pack version, including manifest formatting changes.
 - Changed lesson bytes require a higher lesson version. Changed serialized
@@ -107,14 +112,42 @@ records. These are bounded input/history limits, not measured course, RAM or dis
 budgets. The validator currently retains both parsed lessons and raw verified
 bytes; memory/resource targets still need representative measurement.
 
-## Integration boundary
+## Desktop integration
 
-This is a working core library and CLI, not yet learner-facing pack management.
-Before connecting it to the desktop: add typed pack references to learner backups,
-retain independently trusted historical lesson evidence during restore, surface
-missing/corrupt content, show sizes and install/activation/removal confirmation,
-and test native folder selection plus interrupted flows. Existing backups still
-reject nonempty pack references rather than pretending to restore installations.
-The library must not be substituted for the desktop's current lesson source until
-that integration is complete. Downloads, media/alternatives, catalogue migrations,
-reviewed course authoring, resource benchmarks and the full platform matrix remain.
+In Settings, choose a local folder containing `pack.json`. Review its title,
+version, lesson bytes/count, license/attribution and review status. Installation
+needs explicit acknowledgement; drafts remain development content. Its one-use
+preview token refuses changed source bytes. Then choose **Use version** and confirm
+to activate it. Switching, deactivation and removal each have their own confirmation.
+
+The catalogue lives beside learner storage as `development-packs.sqlite3` for
+debug builds or `packs.sqlite3` for release builds. Native commands accept IDs/
+versions or a preview token, never arbitrary renderer paths. Validation and pack
+operations use blocking workers. A shared `StudyWorkspace` coordinates learner
+storage and the library under one desktop mutex. A held OS file lock excludes a
+second desktop owner of the same profile. Standalone developer tools have no
+profile association and should not mutate its catalogue while the app is open.
+Both schema versions remain 1;
+this is not a data migration.
+
+Learn uses verified active lessons in declared order, with reviewed lessons
+separate from development material. Neither list certifies complete CEFR coverage.
+Saved sessions retain their snapshots. Broken active content is reported and
+withheld without silently substituting the embedded fixture. Unknown catalogues
+report an error while keeping learner state available; they are not silently replaced.
+
+Backups reference all stored verified versions, including inactive history.
+Restore requires matching local references and independently trusted reviewed
+snapshots; it does not change activation. Historical versions are checked after
+updates/restarts. The desktop refuses to remove reviewed versions used by saved
+history, and refuses to classify unreadable content as unused. Deactivation retains
+payloads. The standalone library/CLI has no learner association; desktop history
+protection comes from `StudyWorkspace`. Exact-source reinstall repairs payloads.
+Missing/revoked reviewed content blocks new answer changes/credit for its saved
+sessions while preserving history.
+
+The shipped external review trust registry is empty. No genuinely reviewed lessons
+have been added; synthetic reviews exist only in tests. Downloads, media/alternatives,
+catalogue migrations, reviewed authoring, resource measurements and the full platform
+matrix remain. Native folder/open/save dialogs still need manual acceptance;
+browser tests replace only file selection with a labelled adapter.

@@ -249,7 +249,7 @@ fn export_never_overwrites_existing_file() {
 }
 
 #[test]
-fn future_versions_modes_and_pack_references_are_rejected() {
+fn future_versions_modes_and_missing_pack_references_are_rejected() {
     let bytes = source().export_backup(now()).unwrap();
     let target = store(false);
     for bad in [
@@ -257,16 +257,56 @@ fn future_versions_modes_and_pack_references_are_rejected() {
         modified(&bytes, |a| a.body.schema_version = 2),
         modified(&bytes, |a| a.body.development = false),
         modified(&bytes, |a| {
-            a.body
-                .data
-                .installed_pack_references
-                .push(serde_json::json!({"packId":"future"}))
+            a.body.data.installed_pack_references.push(PackReference {
+                pack_id: "future".into(),
+                version: 1,
+                manifest_sha256: "0".repeat(64),
+            })
         }),
     ] {
         assert!(target.inspect_backup(&bad, now()).is_err());
     }
     let release = Store::initialize(Connection::open_in_memory().unwrap(), vec![], false).unwrap();
     assert!(release.inspect_backup(&bytes, now()).is_err());
+}
+
+#[test]
+fn pack_reference_digest_and_uniqueness_are_checked_even_with_a_valid_archive_checksum() {
+    let reference = PackReference {
+        pack_id: "dev.synthetic.pack".into(),
+        version: 1,
+        manifest_sha256: "a".repeat(64),
+    };
+    let mut source = source();
+    source.content.references = vec![reference.clone()];
+    let bytes = source.export_backup(now()).unwrap();
+    let mut target = store(false);
+    target.content.references = vec![reference.clone()];
+    assert_eq!(
+        target
+            .inspect_backup(&bytes, now())
+            .unwrap()
+            .pack_references,
+        vec![reference]
+    );
+    let before = target.backup_fingerprint().unwrap();
+    for bad in [
+        modified(&bytes, |a| {
+            a.body.data.installed_pack_references[0].manifest_sha256 = "b".repeat(64)
+        }),
+        modified(&bytes, |a| {
+            let reference = a.body.data.installed_pack_references[0].clone();
+            a.body.data.installed_pack_references.push(reference);
+        }),
+    ] {
+        assert!(target.inspect_backup(&bad, now()).is_err());
+        let root = tempfile::tempdir().unwrap();
+        assert!(target
+            .restore_backup(&bad, &before, root.path(), now())
+            .is_err());
+        assert_eq!(target.backup_fingerprint().unwrap(), before);
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+    }
 }
 
 #[test]

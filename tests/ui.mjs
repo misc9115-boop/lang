@@ -109,7 +109,9 @@ try {
     page.getByRole("heading", { name: "Your learning path" }),
   ).toBeVisible();
   await expect(
-    page.getByText("No reviewed course packs are installed.", { exact: false }),
+    page.getByText("No verified, reviewed lessons are active.", {
+      exact: false,
+    }),
   ).toBeVisible();
   mkdirSync("test-results", { recursive: true });
   await page.screenshot({
@@ -216,7 +218,7 @@ try {
     path: "test-results/dark-large-text.png",
     fullPage: true,
   });
-  await page.setViewportSize({ width: 760, height: 900 });
+  await page.setViewportSize({ width: 720, height: 900 });
   assert.equal(
     await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth,
@@ -329,6 +331,112 @@ try {
   assert.deepEqual(errors, []);
   console.log(
     "PASS real backup export, confirmation, cancel, replacement, recovery, and corrupt archive rejection (test file-selection adapter)",
+  );
+  const packs = page.getByRole("region", { name: "Offline lesson packs" });
+  await packs
+    .getByRole("button", { name: "Choose pack folder", exact: true })
+    .click();
+  await expect(
+    packs.getByRole("button", { name: "Install pack", exact: true }),
+  ).toBeDisabled();
+  await packs
+    .getByRole("button", { name: "Cancel pack change", exact: true })
+    .click();
+  await page.evaluate(() =>
+    window.__TAURI_INTERNALS__.invoke("test_cancel_next_dialog"),
+  );
+  await packs
+    .getByRole("button", { name: "Choose pack folder", exact: true })
+    .click();
+  await expect(
+    packs.getByText("Folder selection cancelled.", { exact: false }),
+  ).toBeVisible();
+  await packs
+    .getByRole("button", { name: "Choose pack folder", exact: true })
+    .click();
+  await packs
+    .getByRole("checkbox", { name: /I want to install this pack/ })
+    .check();
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    ),
+    false,
+    "Pack preview wraps at minimum width and enlarged text",
+  );
+  await packs
+    .getByRole("button", { name: "Install pack", exact: true })
+    .click();
+  await expect(
+    packs.getByText("Pack installed.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    packs.getByRole("button", { name: "Choose pack folder", exact: true }),
+  ).toBeFocused();
+  await packs
+    .getByRole("button", { name: "Use version 1", exact: true })
+    .click();
+  await expect(
+    packs.getByRole("button", { name: "Confirm pack change", exact: true }),
+  ).toBeDisabled();
+  await packs
+    .getByRole("button", { name: "Cancel pack change", exact: true })
+    .click();
+  async function confirmPackAction(label) {
+    await packs.getByRole("button", { name: label, exact: true }).click();
+    await packs
+      .getByRole("checkbox", { name: "Confirm this pack change." })
+      .check();
+    await packs
+      .getByRole("button", { name: "Confirm pack change", exact: true })
+      .click();
+  }
+  await confirmPackAction("Use version 1");
+  await expect(
+    packs.getByRole("button", { name: "Deactivate version 1", exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(
+    packs.getByRole("button", { name: "Deactivate version 1", exact: true }),
+  ).toBeVisible();
+  await confirmPackAction("Deactivate version 1");
+  await confirmPackAction("Remove version 1");
+  await expect(
+    packs.getByText("Payloads removed", { exact: false }),
+  ).toBeVisible();
+  await packs
+    .getByRole("button", { name: "Choose pack folder", exact: true })
+    .click();
+  await packs
+    .getByRole("checkbox", { name: /I want to install this pack/ })
+    .check();
+  await packs
+    .getByRole("button", { name: "Install pack", exact: true })
+    .click();
+  await confirmPackAction("Use version 1");
+  await page
+    .getByRole("button", { name: "Export backup", exact: true })
+    .click();
+  await expect(
+    page.getByText("Backup saved to", { exact: false }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Choose backup to restore", exact: true })
+    .click();
+  await expect(
+    page.getByText("Referenced pack versions: 1.", { exact: false }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Cancel restore", exact: true })
+    .click();
+  await page.screenshot({
+    path: "test-results/offline-packs.png",
+    fullPage: true,
+  });
+  assert.deepEqual(errors, []);
+  console.log(
+    "PASS real pack preview/confirmation/cancel, activation after reload, deactivation/removal/repair and typed backup references (test folder-selection adapter)",
   );
   await context.close();
 } finally {

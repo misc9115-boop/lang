@@ -3,7 +3,7 @@
 Implementation decision under SPEC.md §§3, 5–6 / AC-03, 2026-10-15.
 This contract defines an **offline, read-only text-pack preflight**. It does not install,
 download or extract packs, change learner storage, approve a curriculum or award
-credit. The desktop still uses the embedded debug fixture.
+credit. The separate library and desktop own installation and learner integration.
 
 ## Run
 
@@ -22,7 +22,7 @@ Unknown fields are rejected. This is an internal versioned reader contract; the
 complete public media/installation format is unfinished.
 The separate [text-pack library](PACK-LIBRARY.md) now provides atomic local
 installation, verification, version activation/rollback, removal and repair for
-developer/host use. It is not yet connected to the desktop or learner backups.
+developer/host use and desktop Settings, with typed learner-backup references.
 
 ## Records
 
@@ -134,6 +134,5 @@ the future installer must reject changed payloads reusing installed versions. Th
 read-only tool does not enforce an installed-version update/rollback policy.
 
 Still required: full reviewed A1–C2 objectives/content; media and accessible
-alternatives; downloads, learner-facing pack installation and catalogue integration;
-pack references in backups; native course browsing; review-item generation
+alternatives; downloads, full course/reference browsing; review-item generation
 and FSRS. None is marked complete by passing preflight.

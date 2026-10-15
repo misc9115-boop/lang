@@ -27,8 +27,9 @@ The displayed name, monogram, and geometric artwork are development placeholders
   see the [content contract](docs/CONTENT-PACKS.md). This does not install or approve content.
 - A separate offline text-pack library and CLI: atomic local installation,
   verification, explicit activation/rollback, removal and exact-version repair.
-  See [library commands and integration limits](docs/PACK-LIBRARY.md). Desktop
-  pack settings and backup pack references are not connected yet.
+  Desktop Settings adds native folder selection, installation previews and explicit
+  version changes. Backups include exact pack references and validate trusted
+  historical lessons. See [pack management](docs/PACK-LIBRARY.md).
 
 Development fixtures cannot earn learner XP, streaks, achievements, or course
 credit. See [content status](content/README.md) and the [implementation record](docs/IMPLEMENTATION.md).

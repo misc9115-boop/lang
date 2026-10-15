@@ -1,3 +1,4 @@
+use crate::pack_library::{ContentContext, PackReference};
 use crate::{
     store::{validate_lesson, validate_settings},
     *,
@@ -26,7 +27,7 @@ fn encode<T: Serialize>(value: &T) -> Result<String> {
 fn decode<T: serde::de::DeserializeOwned>(value: &str) -> Result<T> {
     serde_json::from_str(value).map_err(error)
 }
-fn hash<T: Serialize>(value: &T) -> Result<String> {
+pub(crate) fn hash<T: Serialize>(value: &T) -> Result<String> {
     Ok(format!(
         "{:x}",
         Sha256::digest(serde_json::to_vec(value).map_err(error)?)
@@ -74,7 +75,7 @@ struct LearnerData {
     days: Vec<SavedDay>,
     achievements: Vec<Grant>,
     reports: Vec<Report>,
-    installed_pack_references: Vec<serde_json::Value>,
+    installed_pack_references: Vec<PackReference>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -156,6 +157,7 @@ pub struct BackupPreview {
     pub active_lesson: Option<String>,
     pub development: bool,
     pub fingerprint: String,
+    pub pack_references: Vec<PackReference>,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -225,7 +227,7 @@ impl BackupController {
 impl Store {
     pub fn export_backup(&self, now: DateTime<Utc>) -> Result<Vec<u8>> {
         let tx = self.connection.unchecked_transaction().map_err(error)?;
-        let data = read_data(&tx)?;
+        let data = read_data(&tx, &self.content.references)?;
         let bytes = archive_bytes(data, self.development_build, now)?;
         // Validate what we are about to call a backup, not just its serialization.
         self.inspect_backup(&bytes, now)?;
@@ -235,7 +237,7 @@ impl Store {
 
     pub fn backup_fingerprint(&self) -> Result<String> {
         let tx = self.connection.unchecked_transaction().map_err(error)?;
-        let fingerprint = hash(&read_data(&tx)?)?;
+        let fingerprint = hash(&read_data(&tx, &self.content.references)?)?;
         tx.commit().map_err(error)?;
         Ok(fingerprint)
     }
@@ -246,6 +248,7 @@ impl Store {
             &archive.body.data,
             self.development_build,
             &self.lessons,
+            &self.content,
             now,
         )?;
         let state = candidate.state(now)?;
@@ -258,6 +261,7 @@ impl Store {
             active_lesson: state.active_session.map(|s| s.lesson.title),
             development: archive.body.development,
             fingerprint: archive.sha256,
+            pack_references: archive.body.data.installed_pack_references,
         })
     }
 
@@ -274,6 +278,7 @@ impl Store {
             &archive.body.data,
             self.development_build,
             &self.lessons,
+            &self.content,
             now,
         )?;
         let state = candidate.state(now)?;
@@ -281,7 +286,7 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(error)?;
-        let current = read_data(&tx)?;
+        let current = read_data(&tx, &self.content.references)?;
         if hash(&current)? != expected_current {
             return Err(
                 "Study data changed after the preview. Choose the backup again before restoring."
@@ -296,6 +301,7 @@ impl Store {
             &checked.body.data,
             self.development_build,
             &self.lessons,
+            &self.content,
             now,
         )?;
         fs::create_dir_all(recovery_directory).map_err(error)?;
@@ -318,7 +324,10 @@ impl Store {
         insert_data(&tx, &archive.body.data)?;
         tx.commit().map_err(error)?;
         Ok(RestoreResult {
-            state,
+            state: AppState {
+                content_issues: self.content_issues.clone(),
+                ..state
+            },
             recovery_path,
         })
     }
@@ -394,7 +403,7 @@ fn parse_archive(bytes: &[u8], development: bool) -> Result<Archive> {
     Ok(archive)
 }
 
-fn read_data(connection: &Connection) -> Result<LearnerData> {
+fn read_data(connection: &Connection, references: &[PackReference]) -> Result<LearnerData> {
     let count: i64 = connection.query_row("SELECT (SELECT COUNT(*) FROM sessions)+(SELECT COUNT(*) FROM session_items)+(SELECT COUNT(*) FROM attempts)+(SELECT COUNT(*) FROM xp_ledger)+(SELECT COUNT(*) FROM study_days)+(SELECT COUNT(*) FROM achievements)+(SELECT COUNT(*) FROM answer_reports)",[],|r|r.get(0)).map_err(error)?;
     let text_bytes: i64=connection.query_row("SELECT COALESCE((SELECT SUM(length(CAST(lesson_snapshot AS BLOB))) FROM sessions),0)+COALESCE((SELECT SUM(COALESCE(length(CAST(draft AS BLOB)),0)+COALESCE(length(CAST(feedback AS BLOB)),0)) FROM session_items),0)+COALESCE((SELECT SUM(length(CAST(note AS BLOB))) FROM answer_reports),0)",[],|r|r.get(0)).map_err(error)?;
     if count > MAX_RECORDS as i64 || text_bytes > MAX_BACKUP_BYTES as i64 {
@@ -590,7 +599,7 @@ fn read_data(connection: &Connection) -> Result<LearnerData> {
         days,
         achievements,
         reports,
-        installed_pack_references: vec![],
+        installed_pack_references: references.to_vec(),
     })
 }
 
@@ -641,6 +650,7 @@ fn validate_data(
     data: &LearnerData,
     development: bool,
     lessons: &[Lesson],
+    context: &ContentContext,
     now: DateTime<Utc>,
 ) -> Result<Store> {
     let count = data.sessions.len()
@@ -653,19 +663,28 @@ fn validate_data(
     if count > MAX_RECORDS {
         return Err("The backup exceeds this version's 100,000 record limit.".into());
     }
-    if !data.installed_pack_references.is_empty() {
-        return Err("This version cannot restore installed-pack references yet.".into());
+    if data.installed_pack_references.len() > 1000 {
+        return Err("Too many pack references in backup.".into());
+    }
+    let mut references = HashSet::new();
+    for reference in &data.installed_pack_references {
+        if !references.insert((&reference.pack_id, reference.version))
+            || !context.references.contains(reference)
+        {
+            return Err("A matching verified pack version is missing. Install the exact referenced content before restoring this backup.".into());
+        }
     }
     if let Some(settings) = &data.settings {
         validate_settings(settings)?;
     } else if count > 0 {
         return Err("Learner records require profile settings.".into());
     }
-    let approved_snapshots = lessons
+    let mut approved_snapshots = lessons
         .iter()
         .filter(|lesson| lesson.editorial_status == "approved")
         .map(hash)
         .collect::<Result<HashSet<_>>>()?;
+    approved_snapshots.extend(context.reviewed_snapshots.iter().cloned());
     let mut sessions = HashMap::new();
     for s in &data.sessions {
         uuid(&s.id)?;

@@ -20,6 +20,8 @@ pub struct Store {
     pub(crate) connection: Connection,
     pub(crate) lessons: Vec<Lesson>,
     pub(crate) development_build: bool,
+    pub(crate) content: crate::pack_library::ContentContext,
+    pub(crate) content_issues: Vec<String>,
 }
 
 impl Store {
@@ -65,6 +67,8 @@ impl Store {
             connection,
             lessons,
             development_build,
+            content: Default::default(),
+            content_issues: vec![],
         })
     }
 
@@ -105,6 +109,7 @@ impl Store {
             active_session: active.map(|id| self.session(&id)).transpose()?,
             progress: self.progress(now)?,
             development_build: self.development_build,
+            content_issues: self.content_issues.clone(),
         })
     }
 
@@ -133,6 +138,7 @@ impl Store {
             .find(|l| l.id == lesson_id)
             .ok_or("This lesson is not installed.")?;
         let practice = lesson.editorial_status != "approved";
+        self.check_snapshot_authority(lesson)?;
         if practice && !self.development_build {
             return Err("Unreviewed lessons are unavailable in this build.".into());
         }
@@ -194,8 +200,22 @@ impl Store {
         })
     }
 
+    fn check_snapshot_authority(&self, lesson: &Lesson) -> Result<()> {
+        if self.content.managed
+            && lesson.editorial_status == "approved"
+            && !self
+                .content
+                .reviewed_snapshots
+                .contains(&crate::backup::hash(lesson)?)
+        {
+            return Err("This reviewed lesson needs its matching verified pack. Open Settings to repair or reinstall it; saved progress has been kept.".into());
+        }
+        Ok(())
+    }
+
     fn active_item(&self, id: &str, exercise_id: &str) -> Result<(Lesson, usize)> {
         let (lesson, position, status, _, _) = self.snapshot(id)?;
+        self.check_snapshot_authority(&lesson)?;
         if status != "active"
             || lesson.exercises.get(position).map(|e| e.id.as_str()) != Some(exercise_id)
         {
@@ -316,6 +336,7 @@ impl Store {
         if status == "completed" {
             return self.session(id);
         }
+        self.check_snapshot_authority(&lesson)?;
         if lesson.exercises.get(position).map(|e| e.id.as_str()) != Some(exercise_id) {
             // Duplicate Continue requests must never skip an exercise.
             return self.session(id);
