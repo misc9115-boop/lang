@@ -25,6 +25,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test -p learning-core --locked
       - run: npm run check:content
+      - run: npm run test:packs
       - run: cargo test -p lang-desktop --locked
       - run: npx playwright install chromium
       - run: npm run test:ui
