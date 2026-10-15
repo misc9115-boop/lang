@@ -403,7 +403,9 @@ try {
   await confirmPackAction("Deactivate version 1");
   await confirmPackAction("Remove version 1");
   await expect(
-    packs.getByText("Payloads removed", { exact: false }),
+    packs
+      .getByRole("listitem")
+      .getByText("Version 1 · Payloads removed", { exact: false }),
   ).toBeVisible();
   await packs
     .getByRole("button", { name: "Choose pack folder", exact: true })
