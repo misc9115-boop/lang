@@ -100,6 +100,9 @@ free. The driver binds only to loopback and cannot compile into a release build.
 It does not automate native open/save dialogs. Logs, status and screenshots are
 kept in `test-results/` for diagnosis. A failed native startup fails the test;
 there is no browser fallback.
+The GUI under test uses a visible launch. Restart checks require confirmed process
+exit. Test builds log startup phases; CI retains only synthetic-test logs, status
+and screenshots for seven days, excluding databases.
 
 To inspect the same disposable integration workbench manually:
 

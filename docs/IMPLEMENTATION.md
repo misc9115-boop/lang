@@ -209,6 +209,13 @@ validation and its rejection/usage exit-code checks. Formatting, workspace
 Clippy and release compilation passed. Unix symlink checks are included for
 the macOS CI host; they have not run on this Windows host.
 
+The first contract CI run passed the new tests/preflight on both hosts and the
+full macOS job. Windows then failed because its native window did not appear
+within the existing 30-second wait. Follow-up test changes make GUI visibility
+explicit, trace startup/driver hooks, require actual process exit for restart
+validation, and preserve diagnostic artifacts without databases. The wait was
+not increased and no root cause is claimed from the original empty app log.
+
 No installer, full native acceptance suite,
 complete architecture matrix, offline-media, speech, AI-quality, complete accessibility, minimum-OS,
 reference-hardware or resource-budget gate has been claimed as passed.

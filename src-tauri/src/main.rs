@@ -101,7 +101,28 @@ fn report_answer(
 fn main() {
     let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
     #[cfg(feature = "native-test")]
-    let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
+    let builder = builder
+        .plugin(
+            tauri::plugin::Builder::<_, ()>::new("native-test-before")
+                .on_webview_ready(|view| {
+                    eprintln!(
+                        "native-test: webview created before driver hook: {}",
+                        view.label()
+                    )
+                })
+                .build(),
+        )
+        .plugin(tauri_plugin_wdio_webdriver::init())
+        .plugin(
+            tauri::plugin::Builder::<_, ()>::new("native-test-after")
+                .on_webview_ready(|view| {
+                    eprintln!("native-test: driver hook finished: {}", view.label())
+                })
+                .build(),
+        )
+        .on_page_load(|view, payload| {
+            eprintln!("native-test: page {:?}: {}", payload.event(), view.label())
+        });
     let context = tauri::generate_context!();
     #[cfg(feature = "native-test")]
     let mut context = context;
@@ -121,9 +142,16 @@ fn main() {
         {
             context.config_mut().app.windows[0].data_directory = Some(directory.join("webview"));
         }
+        let window = &context.config().app.windows[0];
+        eprintln!(
+            "native-test: entering event loop; window={}, create={}, visible={}",
+            window.label, window.create, window.visible
+        );
     }
     builder
         .setup(|app| {
+            #[cfg(feature = "native-test")]
+            eprintln!("native-test: application setup entered");
             #[cfg(not(feature = "native-test"))]
             let directory = app.path().app_local_data_dir()?;
             #[cfg(feature = "native-test")]
@@ -149,6 +177,8 @@ fn main() {
                 controller: Mutex::new(learning_core::BackupController::default()),
                 recovery_directory: directory.join("backups"),
             });
+            #[cfg(feature = "native-test")]
+            eprintln!("native-test: local storage and commands ready");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
