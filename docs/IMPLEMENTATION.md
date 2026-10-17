@@ -353,7 +353,8 @@ Clippy and a frontend build with zero Svelte errors/warnings. Connected-browser
 checks used the actual Rust/SQLite core with an explicitly synthetic pack in
 disposable storage: wrong answer/hint after reload, typed draft resume, Easy
 eligibility, first completion 5 XP, repeated completion 0 XP, abort and validated
-backup preview all worked. The 720px Review page measured 705px document width.
+backup preview all worked. The 720px Review page measured 705px document width, including at 200% text
+after fixing navigation wrapping exposed by the CI layout check.
 The standalone browser runner and native app cannot be launched reliably in this
 restricted local host; CI results for both browser modes, migration/restart and
 release checks are recorded on the PR. Native dialogs, resource budgets and
