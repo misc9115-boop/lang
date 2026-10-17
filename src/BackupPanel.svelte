@@ -129,6 +129,10 @@
           <dd>{ticket.preview.completedLessons}</dd>
         </div>
         <div>
+          <dt>Saved review sessions</dt>
+          <dd>{ticket.preview.reviewSessionCount}</dd>
+        </div>
+        <div>
           <dt>Review item histories</dt>
           <dd>{ticket.preview.reviewItemCount}</dd>
         </div>
@@ -144,13 +148,17 @@
       {#if ticket.preview.activeLesson}<p>
           Saved lesson: {ticket.preview.activeLesson}
         </p>{/if}
+      {#if ticket.preview.activeReview}<p>
+          Includes an unfinished review session.
+        </p>{/if}
       {#if ticket.preview.development}<span class="plain-tag"
           >Development backup · draft credit remains excluded</span
         >{/if}
       <p>
         Restore replaces your current local profile, study history and review
-        item histories. A verified recovery copy of the existing history is
-        saved before replacement.
+        item histories, including saved review sessions and review XP. A
+        verified recovery copy of the existing history is saved before
+        replacement.
       </p>
       <label class="checkbox"
         ><input type="checkbox" bind:checked={confirmed} disabled={busy} /> I understand

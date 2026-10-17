@@ -32,9 +32,11 @@ The displayed name, monogram, and geometric artwork are development placeholders
   historical lessons. See [pack management](docs/PACK-LIBRARY.md).
 - Versioned FSRS scheduling with persisted objective/skill observations from
   independently reviewed lessons, atomic with lesson advancement. Schema-1
-  upgrades require verified recovery archives; version-2 backups include review
-  histories and still accept legacy restores. Review sessions/5-XP credit and
-  exercise-specific vocabulary/grammar mappings remain work. See [review storage](docs/REVIEW.md).
+  and schema-2 upgrades require verified recovery archives. Version-3 backups
+  include saved sessions, review XP and histories and still accept legacy restores.
+  The Review screen supports corrections, hints, explicit Easy, resume/abort and
+  daily 5-XP credit. Exercise-specific vocabulary/grammar mappings remain work.
+  See [review storage](docs/REVIEW.md).
 
 Development fixtures cannot earn learner XP, streaks, achievements, or course
 credit. See [content status](content/README.md) and the [implementation record](docs/IMPLEMENTATION.md).
@@ -137,7 +139,8 @@ See [validation notes](docs/IMPLEMENTATION.md#validation-record).
 
 Reviewed beginner–C2 curriculum and objective coverage; placement/checkpoints;
 all audio, dictation, listening and offline speaking; extended writing/rubrics;
-learner-facing FSRS review (the [scheduling kernel](docs/REVIEW.md) is implemented);
+exercise-specific vocabulary/grammar review mappings and authored reviewed content
+(the [Review screen and session engine](docs/REVIEW.md) are implemented);
 full reference browsing; pack downloads/media;
 future data migrations; remaining achievements and
 reminders; authenticated leaderboard/outbox; real text/voice conversation

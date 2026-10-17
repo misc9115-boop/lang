@@ -132,6 +132,24 @@ fn call(
                 time
             )?)
         }
+        "review_overview" => json!(store.review_overview(time)?),
+        "start_review" => json!(store.start_review(field(args, "practice")?, time)?),
+        "review_draft" => {
+            json!(store.review_draft(&session()?, &exercise()?, field(args, "answer")?, time)?)
+        }
+        "review_submit" => json!(store.review_submit(
+            &session()?,
+            &exercise()?,
+            field(args, "answer")?,
+            &field::<String>(args, "requestId")?,
+            time
+        )?),
+        "review_hint" => json!(store.review_hint(&session()?, &exercise()?, time)?),
+        "review_reveal" => json!(store.review_reveal(&session()?, &exercise()?, time)?),
+        "advance_review" => {
+            json!(store.advance_review(&session()?, &exercise()?, field(args, "easy")?, time)?)
+        }
+        "abort_review" => json!(store.abort_review(&session()?, time)?),
         "app_state" => json!(store.state(time)?),
         "save_settings" => json!(store.save_settings(field(args, "settings")?, time)?),
         "start_lesson" => json!(store.start(&field::<String>(args, "lessonId")?, time)?),
@@ -230,12 +248,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         true,
     )?;
     create_pack_source(&directory.path().join("pack-source"))?;
+    let synthetic = args.iter().any(|a| a == "--synthetic-review");
+    let trust = if synthetic {
+        synthetic_review_pack(&directory.path().join("pack-source"))?
+    } else {
+        learning_core::content::ContentTrust::default()
+    };
     let library = learning_core::pack_library::PackLibrary::open(
         &directory.path().join("packs.sqlite3"),
-        learning_core::content::ContentTrust::default(),
+        trust,
         learning_core::pack_library::LibraryMode::Development,
     );
     let mut store = StudyWorkspace::new(store, library);
+    if synthetic {
+        let ticket = store.prepare_pack(&directory.path().join("pack-source"))?;
+        store.install_pack(&ticket.token)?;
+        store.change_pack("activate", "dev.pack.cafe", 1)?;
+        store.save_settings(
+            learning_core::Settings {
+                level: "A1".into(),
+                time_zone: "America/Chicago".into(),
+                daily_goal: 10,
+                theme: "light".into(),
+                reduced_motion: true,
+                text_scale: 100,
+            },
+            Utc::now(),
+        )?;
+        let s = store.start("dev.a1.cafe", Utc::now())?;
+        while let Some(e) = store.session(&s.id)?.exercise {
+            store.reveal(&s.id, &e.id, Utc::now())?;
+            store.advance(&s.id, &e.id, Utc::now())?;
+        }
+        eprintln!(
+            "SYNTHETIC REVIEW TEST ONLY: no human review occurred, not official course content."
+        );
+    }
     let server = Server::http("127.0.0.1:1421").map_err(std::io::Error::other)?;
     let mut files = TestFiles {
         root: directory.path().to_path_buf(),
@@ -290,4 +338,44 @@ fn create_pack_source(path: &std::path::Path) -> Result<(), Box<dyn std::error::
         include_bytes!("../../../content/development/cafe.json"),
     )?;
     Ok(())
+}
+
+fn synthetic_review_pack(
+    path: &std::path::Path,
+) -> Result<learning_core::content::ContentTrust, Box<dyn std::error::Error>> {
+    use learning_core::content::*;
+    use sha2::{Digest, Sha256};
+    let mut lesson = development_lesson()?;
+    lesson.title = "Synthetic review test - no human review".into();
+    lesson.editorial_status = "approved".into();
+    lesson.exercises.truncate(2);
+    let bytes = serde_json::to_vec(&lesson)?;
+    fs::write(path.join("cafe.json"), &bytes)?;
+    let mut manifest: PackManifest = serde_json::from_slice(&fs::read(path.join("pack.json"))?)?;
+    manifest.title = "Synthetic review test - no human review".into();
+    manifest.editorial_status = EditorialStatus::Approved;
+    manifest.scope = PackScope::Course;
+    manifest.lessons[0].estimated_minutes = Some(7);
+    manifest.lessons[0].exercises.truncate(2);
+    manifest.lessons[0].file.bytes = bytes.len() as u64;
+    manifest.lessons[0].file.sha256 = format!("{:x}", Sha256::digest(&bytes));
+    manifest.reviews = vec![EditorialReview {
+        reviewer: "Synthetic test record - no human review occurred".into(),
+        reviewed_at: Utc::now(),
+        areas: vec![
+            ReviewArea::Linguistic,
+            ReviewArea::Pedagogical,
+            ReviewArea::AnswerVariants,
+            ReviewArea::Licensing,
+            ReviewArea::Pacing,
+        ],
+    }];
+    let bytes = serde_json::to_vec(&manifest)?;
+    fs::write(path.join("pack.json"), &bytes)?;
+    Ok(ContentTrust {
+        reviewed_manifest_sha256: std::collections::HashSet::from([format!(
+            "{:x}",
+            Sha256::digest(&bytes)
+        )]),
+    })
 }

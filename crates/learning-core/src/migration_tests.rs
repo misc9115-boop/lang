@@ -60,12 +60,12 @@ fn migration_preserves_legacy_history_and_verified_recovery_across_reopen() {
         .unwrap()
         .unwrap();
     assert_eq!(read_backup_file(&recovery).unwrap(), old);
-    assert_eq!(store.schema_version().unwrap(), 2);
+    assert_eq!(store.schema_version().unwrap(), 3);
     assert!(table_exists(&store));
     assert!(store.review_histories().unwrap().is_empty());
     let upgraded = store.export_backup(now()).unwrap();
     let archive = parse_archive(&upgraded, true).unwrap();
-    assert_eq!(archive.body.version, 2);
+    assert_eq!(archive.body.version, 3);
     assert_eq!(archive.body.data.review_records.unwrap().len(), 0);
     assert!(store.inspect_backup(&old, now()).is_ok());
     assert!(store
@@ -245,7 +245,7 @@ fn interrupted_migration_preserves_v1_and_recovery() {
         .migrate_schema(&root.path().join("recovery"), now())
         .unwrap()
         .is_some());
-    assert_eq!(reopened.schema_version().unwrap(), 2);
+    assert_eq!(reopened.schema_version().unwrap(), 3);
 }
 
 #[test]
@@ -276,5 +276,50 @@ fn schema_changes_after_open_and_future_archive_pairs_are_rejected() {
         assert!(target
             .inspect_backup(&serde_json::to_vec(&archive).unwrap(), now())
             .is_err());
+    }
+}
+
+#[test]
+fn v2_upgrade_preserves_history_and_exact_v2_recovery_and_rolls_back_failures() {
+    for fail in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("learner.sqlite3");
+        let mut store = legacy(&path);
+        store
+            .connection
+            .execute_batch(include_str!("review_schema.sql"))
+            .unwrap();
+        let before = store.export_backup(now()).unwrap();
+        assert_eq!(parse_archive(&before, true).unwrap().body.version, 2);
+        let directory = root.path().join("recovery");
+        let result = store.migrate_schema_with(&directory, now(), |tx| {
+            assert_eq!(crate::review_storage::schema_version(tx).unwrap(), 3);
+            if fail {
+                Err("injected after schema3 DDL".into())
+            } else {
+                Ok(())
+            }
+        });
+        let recovery = fs::read_dir(&directory)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        assert!(recovery
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("pre-migrate-v2-to-v3-"));
+        assert_eq!(read_backup_file(&recovery).unwrap(), before);
+        assert_eq!(store.schema_version().unwrap(), if fail { 2 } else { 3 });
+        if fail {
+            assert!(result.is_err());
+            assert_eq!(store.export_backup(now()).unwrap(), before);
+        } else {
+            assert!(result.unwrap().is_some());
+            assert!(store.state(now()).unwrap().active_session.is_some());
+            assert!(store.inspect_backup(&before, now()).is_ok());
+        }
     }
 }

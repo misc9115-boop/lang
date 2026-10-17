@@ -120,6 +120,87 @@ fn report_answer(
     })
 }
 
+#[tauri::command]
+fn review_overview(
+    database: State<'_, Database>,
+) -> Result<learning_core::review_session::ReviewOverview> {
+    with_store(database, |s| {
+        s.pack_state();
+        s.review_overview(Utc::now())
+    })
+}
+#[tauri::command]
+fn start_review(
+    database: State<'_, Database>,
+    practice: bool,
+) -> Result<learning_core::review_session::ReviewSessionView> {
+    with_store(database, |s| {
+        s.pack_state();
+        s.start_review(practice, Utc::now())
+    })
+}
+#[tauri::command]
+fn review_draft(
+    database: State<'_, Database>,
+    session_id: String,
+    exercise_id: String,
+    answer: Answer,
+) -> Result<learning_core::review_session::ReviewSessionView> {
+    with_store(database, |s| {
+        s.review_draft(&session_id, &exercise_id, answer, Utc::now())
+    })
+}
+#[tauri::command]
+fn review_submit(
+    database: State<'_, Database>,
+    session_id: String,
+    exercise_id: String,
+    answer: Answer,
+    request_id: String,
+) -> Result<learning_core::review_session::ReviewSessionView> {
+    with_store(database, |s| {
+        s.review_submit(&session_id, &exercise_id, answer, &request_id, Utc::now())
+    })
+}
+#[tauri::command]
+fn review_hint(
+    database: State<'_, Database>,
+    session_id: String,
+    exercise_id: String,
+) -> Result<learning_core::review_session::ReviewSessionView> {
+    with_store(database, |s| {
+        s.review_hint(&session_id, &exercise_id, Utc::now())
+    })
+}
+#[tauri::command]
+fn review_reveal(
+    database: State<'_, Database>,
+    session_id: String,
+    exercise_id: String,
+) -> Result<learning_core::review_session::ReviewSessionView> {
+    with_store(database, |s| {
+        s.review_reveal(&session_id, &exercise_id, Utc::now())
+    })
+}
+#[tauri::command]
+fn advance_review(
+    database: State<'_, Database>,
+    session_id: String,
+    exercise_id: String,
+    easy: bool,
+) -> Result<learning_core::review_session::ReviewSessionView> {
+    with_store(database, |s| {
+        s.advance_review(&session_id, &exercise_id, easy, Utc::now())
+    })
+}
+#[tauri::command]
+fn abort_review(
+    database: State<'_, Database>,
+    session_id: String,
+) -> Result<learning_core::review_session::ReviewSessionView> {
+    with_store(database, |s| s.abort_review(&session_id, Utc::now()))
+}
+
 fn main() {
     let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
     #[cfg(feature = "native-test")]
@@ -238,6 +319,14 @@ fn main() {
             show_hint,
             reveal_answer,
             advance_session,
+            review_overview,
+            start_review,
+            review_draft,
+            review_submit,
+            review_hint,
+            review_reveal,
+            advance_review,
+            abort_review,
             report_answer,
             desktop_backups::export_learner_backup,
             desktop_backups::choose_learner_backup,

@@ -63,6 +63,7 @@ export type AppState = {
   settings: Settings | null;
   lessons: Lesson[];
   activeSession: Session | null;
+  activeReview: ReviewSession | null;
   progress: Progress;
   developmentBuild: boolean;
   contentIssues: string[];
@@ -80,6 +81,8 @@ export type BackupTicket = {
     fingerprint: string;
     packReferences: PackReference[];
     reviewItemCount: number;
+    reviewSessionCount: number;
+    activeReview: boolean;
   };
 };
 export type RecoveryEntry = { id: string; savedAt: string };
@@ -164,3 +167,25 @@ export const coverage: Record<string, { title: string; description: string }> =
         "Subtle style, dense or idiomatic language, synthesis across sources, and nuanced argument.",
     },
   };
+
+export type ReviewSession = {
+  id: string;
+  status: string;
+  position: number;
+  itemCount: number;
+  exercise: Exercise | null;
+  target: {
+    curriculumId: string;
+    targetId: string;
+    targetKind: string;
+    skill: string;
+  } | null;
+  canRateEasy: boolean;
+  xpEarned: number;
+};
+export type ReviewOverview = {
+  dueCount: number;
+  availableCount: number;
+  sessionLimit: number;
+  active: ReviewSession | null;
+};

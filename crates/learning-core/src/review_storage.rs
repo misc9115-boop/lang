@@ -101,8 +101,8 @@ pub(crate) fn schema_version(connection: &Connection) -> Result<u32> {
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .map_err(error)
 }
-fn read_one(connection: &Connection, key: &ReviewKey) -> Result<Option<StoredReview>> {
-    if schema_version(connection)? != 2 {
+pub(crate) fn read_one(connection: &Connection, key: &ReviewKey) -> Result<Option<StoredReview>> {
+    if !matches!(schema_version(connection)?, 2 | 3) {
         return Err("Upgrade the learner database before using review history.".into());
     }
     let key = encode(key)?;
@@ -137,7 +137,7 @@ fn read_one(connection: &Connection, key: &ReviewKey) -> Result<Option<StoredRev
 pub(crate) fn read_all(connection: &Connection) -> Result<Vec<StoredReview>> {
     match schema_version(connection)? {
         1 => return Ok(vec![]),
-        2 => {}
+        2 | 3 => {}
         _ => return Err("Unsupported learner schema; review history was not read.".into()),
     }
     let (count, total, largest, key_length): (i64, i64, i64, i64) = connection.query_row("SELECT COUNT(*), COALESCE(SUM(length(CAST(record AS BLOB))),0), COALESCE(MAX(length(CAST(record AS BLOB))),0), COALESCE(MAX(length(CAST(review_key AS BLOB))),0) FROM review_histories", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).map_err(error)?;
@@ -236,4 +236,22 @@ pub(crate) fn seed_lesson_reviews(
         insert_record(connection, &record)?;
     }
     Ok(())
+}
+
+/// Commit a resolved review rating using a host-verified source.
+pub(crate) fn record_review(
+    connection: &Connection,
+    context: &ContentContext,
+    source: &ReviewSource,
+    observation: ReviewObservation,
+) -> Result<()> {
+    if !context.review_sources.contains(source) {
+        return Err("Review content is no longer verified.".into());
+    }
+    let mut record = read_one(connection, &source.key)?
+        .ok_or("Introduce this item through a reviewed lesson first.")?;
+    record.validate_authority(context)?;
+    record.history.record(observation)?;
+    record.sources.push(source.clone());
+    insert_record(connection, &record)
 }

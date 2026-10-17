@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import BackupPanel from "./BackupPanel.svelte";
+  import ReviewPanel from "./ReviewPanel.svelte";
   import PackPanel from "./PackPanel.svelte";
   import {
     command,
@@ -14,7 +15,9 @@
 
   let app = $state<AppState | null>(null);
   let session = $state<Session | null>(null);
-  let page = $state<"learn" | "progress" | "settings" | "lesson">("learn");
+  let page = $state<"learn" | "progress" | "settings" | "lesson" | "review">(
+    "learn",
+  );
   let busy = $state(false);
   let loading = $state(true);
   let error = $state("");
@@ -186,7 +189,7 @@
     </div>
     <div class="nav-caption">YOUR STUDY SPACE</div>
     <nav aria-label="Main">
-      {#each [{ id: "learn", symbol: "▦", label: "Learn" }, { id: "progress", symbol: "↗", label: "Progress" }, { id: "settings", symbol: "⚙", label: "Settings" }] as item}
+      {#each [{ id: "learn", symbol: "▦", label: "Learn" }, { id: "review", symbol: "↻", label: "Review" }, { id: "progress", symbol: "↗", label: "Progress" }, { id: "settings", symbol: "⚙", label: "Settings" }] as item}
         <button
           class:active={page === item.id ||
             (item.id === "learn" && page === "lesson")}
@@ -421,7 +424,7 @@
                   </div>
                   <button
                     class="primary"
-                    disabled={busy || !!app.activeSession}
+                    disabled={busy || !!app.activeSession || !!app.activeReview}
                     onclick={() => act(() => begin(lesson.id))}
                     >Start {lesson.title}</button
                   >
@@ -450,6 +453,18 @@
                 }}>Resume saved lesson →</button
               >
             </section>{/if}
+          {#if app.activeReview}<section class="panel resume">
+              <h2>Your review is saved</h2>
+              <p>
+                Item {app.activeReview.position + 1} of {app.activeReview
+                  .itemCount}.
+              </p>
+              <button
+                class="primary"
+                disabled={busy}
+                onclick={() => (page = "review")}>Resume saved review →</button
+              >
+            </section>{/if}
           {#if app.developmentBuild}
             <section class="panel development">
               <div class="section-label">
@@ -472,7 +487,7 @@
                   </div>
                   <button
                     class="secondary"
-                    disabled={busy || !!app.activeSession}
+                    disabled={busy || !!app.activeSession || !!app.activeReview}
                     onclick={() => act(() => begin(lesson.id))}
                     >Open test lesson <span aria-hidden="true">→</span></button
                   >
@@ -509,6 +524,18 @@
           </div>
         </aside>
       </div>
+    {:else if page === "review"}
+      <ReviewPanel
+        {busy}
+        run={act}
+        hasLesson={!!app.activeSession}
+        onChanged={async () => {
+          app = await command<AppState>("app_state");
+        }}
+        onResumeLesson={() => {
+          if (app?.activeSession) setSession(app.activeSession);
+        }}
+      />
     {:else if page === "progress"}
       <span class="eyebrow">THE BIGGER PICTURE</span>
       <h1>Your progress</h1>
@@ -529,9 +556,11 @@
             {#each app.progress.achievements as achievement}<li>
                 {achievement === "first_lesson"
                   ? "First lesson · complete a reviewed lesson"
-                  : achievement === "100_xp"
-                    ? "100 XP · earn 100 XP"
-                    : "Seven-day streak · study seven consecutive days"}
+                  : achievement === "first_review"
+                    ? "First review · complete a review session"
+                    : achievement === "100_xp"
+                      ? "100 XP · earn 100 XP"
+                      : "Seven-day streak · study seven consecutive days"}
               </li>{/each}
           </ul>{:else}<p>
             Your achievements will appear here as you study reviewed content.
@@ -542,8 +571,8 @@
         <h2>Skill evidence</h2>
         <p>
           Full skill-level reporting is still being developed. This build does
-          not assess CEFR proficiency. Review scheduling, listening, speaking,
-          and advanced writing are still to be implemented.
+          not assess CEFR proficiency. Listening, speaking, and advanced writing
+          are still to be implemented.
         </p>
       </section>
     {:else if page === "lesson" && session}

@@ -29,6 +29,7 @@ jobs:
       - run: cargo test -p lang-desktop --locked
       - run: npx playwright install chromium
       - run: npm run test:ui
+      - run: node tests/ui.mjs --review
       - run: npm run tauri -- build --debug --no-bundle
       - run: npm run test:native
       - run: cargo check -p lang-desktop --release --locked

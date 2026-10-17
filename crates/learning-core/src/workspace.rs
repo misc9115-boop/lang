@@ -267,6 +267,20 @@ impl StudyWorkspace {
                     .into(),
             );
         }
+        if action == "remove"
+            && crate::review_session::read_all(&self.store.connection)?
+                .iter()
+                .any(|s| {
+                    s.items
+                        .iter()
+                        .any(|i| i.source.pack.pack_id == id && i.source.pack.version == version)
+                })
+        {
+            return Err(
+                "Saved review sessions need this pack version. You can deactivate it instead."
+                    .into(),
+            );
+        }
         let library = self.library.as_mut().map_err(|e| e.clone())?;
         match action {
             "activate" => library.activate(id, version)?,
