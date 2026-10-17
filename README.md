@@ -15,6 +15,9 @@ The displayed name, monogram, and geometric artwork are development placeholders
   unlimited retries, hints, explicit solution review, and local answer reports.
 - SQLite transactions, saved answer drafts, exit/resume, lesson snapshots, and
   first-attempt evidence that retries cannot rewrite.
+- Versioned local backup export, validated restore previews, explicit replacement
+  confirmation, and verified pre-import recovery copies. Settings includes the
+  recovery list; existing files are never overwritten. See [backup contract](docs/BACKUPS.md).
 - Core rules for 10 XP per reviewed lesson per study day, current/best streaks,
   daily goals, and first-lesson/7-day/100-XP achievements. These are covered by
   test-only approved fixtures; **there are no reviewed lessons to earn them in
@@ -64,19 +67,35 @@ backend or use browser storage for learner data.
 npm run build
 cargo fmt --all --check
 cargo test -p learning-core --locked
+cargo test -p lang-desktop --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 npm run test:ui
+npm run test:native
 ```
 
 UI checks start a loopback test driver using the real Rust core and a disposable
 SQLite database, plus a test-only browser transport. They exercise onboarding,
 validation, retries, hints, reports, accent handling, saved drafts after reload,
 ordering, reveal, summary, draft-credit exclusion, themes and enlarged text.
+Backup checks use real archives and transactions with a test file-selection
+adapter; they cover cancellation, replacement, recovery and corruption.
 The driver and transport are not part of the packaged app. Ports 1420, 1421 and
-(on Windows) 19223 must be free. On Windows the runner uses installed Chrome or
-Edge, or `LANG_TEST_BROWSER_PATH`; on macOS install the test browser first with
-`npx playwright install chromium`. `LANG_TEST_CDP_URL` can point to a separately
+(on Windows with an explicit browser override) 19223 must be free. Install the
+test browser first with `npx playwright install chromium`. The default is
+Playwright's downloaded Chromium with its browser sandbox enabled;
+`LANG_TEST_BROWSER_PATH` can explicitly select Chrome/Edge on Windows.
+`LANG_TEST_CDP_URL` can point to a separately
 started test browser. Screenshots go to ignored `test-results/`.
+
+The native smoke test builds an explicitly enabled debug-only WebDriver feature,
+uses actual WebView/IPC/SQLite, and checks recovery plus saved drafts after an
+application restart. It uses an isolated SQLite profile under `test-results/`
+and an ephemeral WebView (also a separate data directory on Windows); it never
+opens the normal learner database. Port 19445 must be
+free. The driver binds only to loopback and cannot compile into a release build.
+It does not automate native open/save dialogs. Logs, status and screenshots are
+kept in `test-results/` for diagnosis. A failed native startup fails the test;
+there is no browser fallback.
 
 To inspect the same disposable integration workbench manually:
 
@@ -91,7 +110,8 @@ have passed. It must not be exposed on a public interface.
 The first implementation was checked with Node 24.11.0, npm 11.20.0, Rust 1.93.1,
 Visual Studio 2022 C++ tools and WebView2 on the development Windows host.
 This does not establish minimum-OS support, hardware budgets, or macOS behavior.
-The CI workflow is supplied for Windows/macOS but has not run remotely yet.
+The foundation's Windows/macOS CI passed on [PR #1](https://github.com/misc9115-boop/lang/pull/1).
+That run predates backup/recovery and the native smoke test added here.
 See [validation notes](docs/IMPLEMENTATION.md#validation-record).
 
 ## Still required
@@ -99,7 +119,7 @@ See [validation notes](docs/IMPLEMENTATION.md#validation-record).
 Reviewed beginner–C2 curriculum and objective coverage; placement/checkpoints;
 all audio, dictation, listening and offline speaking; extended writing/rubrics;
 FSRS review; full reference browsing; pack installation/integrity/repair;
-versioned export/import and migration backups; remaining achievements and
+tested data-transforming migrations; remaining achievements and
 reminders; authenticated leaderboard/outbox; real text/voice conversation
 adapters; privacy/deletion controls; installers, signing and update consent;
 complete native accessibility, performance, platform and content QA.

@@ -1,5 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(all(feature = "native-test", not(debug_assertions)))]
+compile_error!("The native test server must never be included in a release build.");
+mod desktop_backups;
+
 use chrono::Utc;
 use learning_core::{Answer, AppState, SessionView, Settings, Store};
 use std::sync::Mutex;
@@ -95,9 +99,38 @@ fn report_answer(
 }
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    #[cfg(feature = "native-test")]
+    let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
+    let context = tauri::generate_context!();
+    #[cfg(feature = "native-test")]
+    let mut context = context;
+    #[cfg(feature = "native-test")]
+    {
+        let directory = std::env::var_os("LANG_NATIVE_TEST_DATA_DIR")
+            .expect("Native tests require an isolated data directory");
+        let directory = std::path::PathBuf::from(directory);
+        assert!(
+            directory.is_absolute(),
+            "Native test data directory must be absolute"
+        );
+        // WKWebView ignores data_directory; ephemeral webview storage also keeps
+        // native tests isolated on macOS. Learner SQLite remains in the test root.
+        context.config_mut().app.windows[0].incognito = true;
+        #[cfg(not(target_os = "macos"))]
+        {
+            context.config_mut().app.windows[0].data_directory = Some(directory.join("webview"));
+        }
+    }
+    builder
         .setup(|app| {
+            #[cfg(not(feature = "native-test"))]
             let directory = app.path().app_local_data_dir()?;
+            #[cfg(feature = "native-test")]
+            let directory = std::path::PathBuf::from(
+                std::env::var_os("LANG_NATIVE_TEST_DATA_DIR")
+                    .expect("Native tests require isolated storage"),
+            );
             std::fs::create_dir_all(&directory)?;
             let development = cfg!(debug_assertions);
             #[cfg(debug_assertions)]
@@ -112,6 +145,10 @@ fn main() {
             let store = Store::open(&directory.join(filename), lessons, development)
                 .map_err(std::io::Error::other)?;
             app.manage(Database(Mutex::new(store)));
+            app.manage(desktop_backups::BackupServices {
+                controller: Mutex::new(learning_core::BackupController::default()),
+                recovery_directory: directory.join("backups"),
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -123,8 +160,14 @@ fn main() {
             show_hint,
             reveal_answer,
             advance_session,
-            report_answer
+            report_answer,
+            desktop_backups::export_learner_backup,
+            desktop_backups::choose_learner_backup,
+            desktop_backups::restore_learner_backup,
+            desktop_backups::cancel_backup_import,
+            desktop_backups::list_recovery_backups,
+            desktop_backups::preview_recovery_backup
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("The desktop application could not start");
 }

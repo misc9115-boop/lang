@@ -1015,3 +1015,61 @@ legend {
   transition: none !important;
   scroll-behavior: auto !important;
 }
+
+.backups-panel {
+  margin-top: 2rem;
+}
+.backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin: 1rem 0;
+}
+.backup-message {
+  overflow-wrap: anywhere;
+}
+.restore-preview {
+  border: 1px solid var(--green);
+  background: var(--green-soft);
+  padding: 1.2rem;
+  border-radius: 12px;
+  margin: 1.5rem 0;
+}
+.restore-preview h3:focus {
+  outline: none;
+}
+.restore-preview dl {
+  display: grid;
+  gap: 0.5rem;
+}
+.restore-preview dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.restore-preview dt {
+  color: var(--muted);
+}
+.restore-preview dd {
+  margin: 0;
+  font-weight: 650;
+}
+.recovery-list {
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+  margin-top: 1.5rem;
+}
+.recovery-list ul {
+  list-style: none;
+  padding: 0;
+}
+.recovery-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  border-top: 1px solid var(--border);
+  padding: 0.5rem 0;
+}

@@ -1,7 +1,12 @@
+mod backup;
 mod model;
 mod scoring;
 mod store;
 
+pub use backup::{
+    read_backup_file, write_new_backup, BackupController, BackupPreview, BackupTicket,
+    RestoreResult, MAX_BACKUP_BYTES,
+};
 pub use model::*;
 pub use scoring::normalize;
 pub use store::Store;

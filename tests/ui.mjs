@@ -38,15 +38,16 @@ try {
   await waitFor("http://127.0.0.1:1421/health");
   if (process.env.LANG_TEST_CDP_URL) {
     browser = await chromium.connectOverCDP(process.env.LANG_TEST_CDP_URL);
-  } else if (process.platform === "win32") {
+  } else if (
+    process.platform === "win32" &&
+    process.env.LANG_TEST_BROWSER_PATH
+  ) {
     // Ignored stdio also works in desktop sandboxes that prohibit child pipes.
-    const executable =
-      process.env.LANG_TEST_BROWSER_PATH ||
-      [
-        "C:/Program Files/Google/Chrome/Application/chrome.exe",
-        "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-      ].find(existsSync);
-    assert.ok(executable, "Install Chrome/Edge or set LANG_TEST_BROWSER_PATH");
+    const executable = process.env.LANG_TEST_BROWSER_PATH;
+    assert.ok(
+      existsSync(executable),
+      "LANG_TEST_BROWSER_PATH must name a browser",
+    );
     browserDirectory = mkdtempSync(path.join(tmpdir(), "lang-ui-"));
     browserProcess = spawn(
       executable,
@@ -64,7 +65,7 @@ try {
     await waitFor("http://127.0.0.1:19223/json/version");
     browser = await chromium.connectOverCDP("http://127.0.0.1:19223");
   } else {
-    browser = await chromium.launch();
+    browser = await chromium.launch({ chromiumSandbox: true });
   }
 
   const context = await browser.newContext({
@@ -236,6 +237,98 @@ try {
   assert.deepEqual(externalRequests, []);
   console.log(
     "PASS level changes, dark theme, 200% text, narrow layout, keyboard, and no external page requests",
+  );
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Export backup", exact: true })
+    .click();
+  await expect(
+    page.getByText("Backup saved to", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "A1 CEFR", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Save settings", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Choose backup to restore", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Restore this backup", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Cancel restore", exact: true })
+    .click();
+  assert.equal(
+    (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("app_state")))
+      .settings.level,
+    "A1",
+  );
+  await page.evaluate(() =>
+    window.__TAURI_INTERNALS__.invoke("test_cancel_next_dialog"),
+  );
+  await page
+    .getByRole("button", { name: "Choose backup to restore", exact: true })
+    .click();
+  await expect(
+    page.getByText("File selection cancelled.", { exact: false }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Choose backup to restore", exact: true })
+    .click();
+  await page
+    .getByRole("checkbox", {
+      name: "I understand this replaces my current local study data.",
+    })
+    .check();
+  await page
+    .getByRole("button", { name: "Restore this backup", exact: true })
+    .click();
+  await expect(
+    page.getByText("Backup restored.", { exact: false }),
+  ).toBeVisible();
+  assert.equal(
+    (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("app_state")))
+      .settings.level,
+    "C2",
+  );
+  await page
+    .getByRole("button", { name: "Preview recovery copy", exact: true })
+    .click();
+  await page
+    .getByRole("checkbox", {
+      name: "I understand this replaces my current local study data.",
+    })
+    .check();
+  await page
+    .getByRole("button", { name: "Restore this backup", exact: true })
+    .click();
+  assert.equal(
+    (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("app_state")))
+      .settings.level,
+    "A1",
+  );
+  await page.evaluate(() =>
+    window.__TAURI_INTERNALS__.invoke("test_corrupt_selected_backup"),
+  );
+  await page
+    .getByRole("button", { name: "Choose backup to restore", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "checksum verification failed",
+  );
+  assert.equal(
+    (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("app_state")))
+      .settings.level,
+    "A1",
+  );
+  await page.screenshot({
+    path: "test-results/backups-recovery.png",
+    fullPage: true,
+  });
+  assert.deepEqual(errors, []);
+  console.log(
+    "PASS real backup export, confirmation, cancel, replacement, recovery, and corrupt archive rejection (test file-selection adapter)",
   );
   await context.close();
 } finally {

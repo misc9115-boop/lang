@@ -80,7 +80,12 @@ pub struct LessonSummary {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+#[serde(
+    tag = "type",
+    content = "value",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
 pub enum Answer {
     Text(String),
     Option(String),
@@ -88,7 +93,7 @@ pub enum Answer {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Feedback {
     pub correct: bool,
     pub revealed: bool,
