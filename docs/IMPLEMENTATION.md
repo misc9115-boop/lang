@@ -177,19 +177,55 @@ Development checks are recorded separately from full acceptance gates:
 (os error 5)`, before the application database was created. Tauri creates its
   configured window before the application's setup callback. The precise OS
   denial has not been isolated; native startup/IPC and dialogs are unverified here.
-- The Windows/macOS workflow now includes the native smoke test. Adding a test
-  to CI does not establish that it has passed; inspect the current run separately.
+- [PR #2's Windows/macOS CI](https://github.com/misc9115-boop/lang/actions/runs/38656790508)
+  passed on commit `6c70eb7`: both hosts exercised actual native startup/IPC,
+  recovery preview/cancel/restore, recovery-file contents and saved drafts after
+  process restart, in addition to the browser/core/build/release checks.
+  Native open/save dialogs remain unverified. Direct launch on this execution
+  host still failed with OS error 5 even after app-specific data-folder access.
 
-No installer, native end-to-end,
-macOS/ARM, offline-media, speech, AI-quality, complete accessibility, minimum-OS,
+### Curriculum authoring contract increment — 2026-10-15
+
+The reusable core now exposes an offline directory-based text-pack preflight and
+an authoring CLI. [CONTENT-PACKS.md](CONTENT-PACKS.md) records the version-1
+contract, limits, evidence rules and trust boundary. It adds no dependency,
+database migration, installation command or learner-facing course content.
+
+The existing café payload is unchanged. Its draft sidecar declares stable
+objectives/targets/unit ordering and per-exercise skill/direction mappings.
+Coverage reports distinguish planned, represented and reviewed objectives for
+all six levels/eight strands; missing areas remain explicit. No duration,
+editorial reviewer, approved course map or learner proficiency has been invented.
+An externally trusted manifest digest is required before an approval claim can
+pass; the CLI trusts no approved manifests by default. Reviewer/rights checks
+remain human work rather than a consequence of valid JSON or SHA-256.
+
+Local Windows validation: 50 core tests plus the desktop path-validation test
+passed, including corrupt/missing payloads, unsafe/case-colliding paths,
+prerequisite cycles, mismatched references, unsupported evidence, forged approval,
+item-specific source citations and declared unit ordering. Tests use temporary
+folders containing spaces and accented characters. The CLI passed real-fixture
+validation and its rejection/usage exit-code checks. Formatting, workspace
+Clippy and release compilation passed. Unix symlink checks are included for
+the macOS CI host; they have not run on this Windows host.
+
+The first contract CI run passed the new tests/preflight on both hosts and the
+full macOS job. Windows then failed because its native window did not appear
+within the existing 30-second wait. Follow-up test changes make GUI visibility
+explicit, trace startup/driver hooks, require actual process exit for restart
+validation, and preserve diagnostic artifacts without databases. The wait was
+not increased and no root cause is claimed from the original empty app log.
+
+No installer, full native acceptance suite,
+complete architecture matrix, offline-media, speech, AI-quality, complete accessibility, minimum-OS,
 reference-hardware or resource-budget gate has been claimed as passed.
 
 ## Next implementation work
 
-1. Pass native startup, IPC and restart checks on the supported hosts; verify
-   native file dialogs and recovery manually, then extend failure/crash coverage.
-2. Define a versioned objective/skill manifest and signed-off content-pack format,
-   author reviewed lessons and track real editorial provenance.
+1. Verify native file dialogs manually; extend failure/crash coverage and minimum
+   OS/architecture checks beyond the baseline CI hosts.
+2. Expand the text-pack authoring contract into media/alternative and installation
+   contracts; author the complete objective map and lessons with real review.
 3. Implement FSRS review, full exercises/media and accessible alternatives,
    resource-controlled pack management, and tested pre-migration recovery.
 4. Implement independent leaderboard and text/voice conversation adapters, with

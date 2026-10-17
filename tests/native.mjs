@@ -9,6 +9,7 @@ import {
   closeSync,
   writeFileSync,
   readFileSync,
+  existsSync,
 } from "node:fs";
 import path from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
@@ -35,6 +36,7 @@ let processHandle;
 let sessionId;
 let log;
 let exitCode;
+let failureReason;
 
 async function request(method, route, body) {
   const response = await fetch(base + route, {
@@ -114,13 +116,15 @@ async function start() {
       TAURI_WEBDRIVER_PORT: "19445",
     },
     stdio: ["ignore", log, log],
-    windowsHide: true,
+    // This is the actual GUI under test. Do not request a hidden launch.
+    windowsHide: false,
   });
   processHandle.on("error", (e) => {
     exitCode = e.message;
   });
-  processHandle.on("exit", (code) => {
-    exitCode = code;
+  processHandle.on("exit", (code, signal) => {
+    exitCode = code ?? `signal ${signal}`;
+    console.log(`Native test process exited: ${exitCode}`);
   });
   await wait(async () => {
     const r = await fetch(base + "/status", {
@@ -151,14 +155,23 @@ async function stop() {
   }
   if (processHandle) {
     const child = processHandle;
-    processHandle = undefined;
-    if (child.exitCode === null) {
+    if (
+      child.pid !== undefined &&
+      child.exitCode === null &&
+      child.signalCode === null
+    ) {
+      const exited = new Promise((resolve) => child.once("exit", resolve));
       child.kill();
-      await Promise.race([
-        new Promise((resolve) => child.once("exit", resolve)),
-        pause(5000),
+      const didExit = await Promise.race([
+        exited.then(() => true),
+        pause(5000).then(() => false),
       ]);
+      if (!didExit)
+        throw new Error(
+          "Native process did not exit; restart validation cannot continue",
+        );
     }
+    processHandle = undefined;
   }
   if (log !== undefined) {
     closeSync(log);
@@ -241,6 +254,7 @@ try {
   const after = await invoke("app_state");
   assert.equal(after.settings.level, "A1");
   assert.equal(after.progress.totalXp, 0);
+  await stop();
   console.log(
     "PASS native startup, real IPC, backup preview/cancel/restore, recovery creation, and saved draft after process restart",
   );
@@ -264,7 +278,17 @@ try {
     ),
   );
 } catch (error) {
+  failureReason = String(error);
   console.error(String(error));
+  console.error(
+    JSON.stringify({
+      pid: processHandle?.pid,
+      processExit: processHandle?.exitCode,
+      processSignal: processHandle?.signalCode,
+      databaseCreated: existsSync(path.join(root, "development.sqlite3")),
+      webviewStorageCreated: existsSync(path.join(root, "webview")),
+    }),
+  );
   try {
     console.error(
       readFileSync(path.join(root, "native.log"), "utf8").slice(0, 6000),
@@ -280,5 +304,15 @@ try {
   );
   process.exitCode = 1;
 } finally {
-  await stop();
+  try {
+    await stop();
+  } catch (error) {
+    const detail = `${failureReason ?? "Native cleanup failed"}; cleanup: ${error}`;
+    console.error(detail);
+    writeFileSync(
+      "test-results/native-status.json",
+      JSON.stringify({ passed: false, profile: root, error: detail }, null, 2),
+    );
+    process.exitCode = 1;
+  }
 }

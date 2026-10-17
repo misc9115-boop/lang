@@ -21,6 +21,15 @@ AI-drafted material; unreviewed.” Third-party content/media retains its own ri
 The current JSON schema is an internal foundation format (Rust `Lesson` and
 `Exercise`, with unknown fields rejected). Stable IDs, version, level, title,
 objective, editorial status, license, accepted answers, hints and explanations
-are required. The content-pack schema still needs the full objective/skill map,
-asset manifest, compatibility/integrity rules, review provenance and pack lifecycle
-specified by SPEC.md. This fixture format is not a public pack format.
+are required.
+
+`development/pack.json` maps the existing fixture to draft objectives,
+vocabulary-sense IDs, a unit and explicit exercise skill tags. Run
+`npm run check:content` to validate references, compatibility, file integrity and
+provenance and report coverage gaps. Its duration is deliberately unmeasured.
+Passing preflight cannot approve the fixture or install it in the learner app.
+
+See [the text-pack contract](../docs/CONTENT-PACKS.md). Full reviewed objectives,
+media/alternative records and the pack installation/catalogue lifecycle still
+need implementation and real editorial work. This is not the completed public
+pack format.

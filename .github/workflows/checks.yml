@@ -24,9 +24,20 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test -p learning-core --locked
+      - run: npm run check:content
       - run: cargo test -p lang-desktop --locked
       - run: npx playwright install chromium
       - run: npm run test:ui
       - run: npm run tauri -- build --debug --no-bundle
       - run: npm run test:native
       - run: cargo check -p lang-desktop --release --locked
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: native-diagnostics-${{ matrix.os }}
+          path: |
+            test-results/native-status.json
+            test-results/native-window.png
+            test-results/native-profile-*/native.log
+          if-no-files-found: ignore
+          retention-days: 7

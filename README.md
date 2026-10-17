@@ -22,6 +22,9 @@ The displayed name, monogram, and geometric artwork are development placeholders
   daily goals, and first-lesson/7-day/100-XP achievements. These are covered by
   test-only approved fixtures; **there are no reviewed lessons to earn them in
   the application yet**.
+- Offline authoring preflight for versioned text packs: objective/unit/skill
+  mappings, provenance, file hashes and coverage gaps. Run `npm run check:content`;
+  see the [content contract](docs/CONTENT-PACKS.md). This does not install or approve content.
 
 Development fixtures cannot earn learner XP, streaks, achievements, or course
 credit. See [content status](content/README.md) and the [implementation record](docs/IMPLEMENTATION.md).
@@ -68,6 +71,7 @@ npm run build
 cargo fmt --all --check
 cargo test -p learning-core --locked
 cargo test -p lang-desktop --locked
+npm run check:content
 cargo clippy --workspace --all-targets --locked -- -D warnings
 npm run test:ui
 npm run test:native
@@ -96,6 +100,9 @@ free. The driver binds only to loopback and cannot compile into a release build.
 It does not automate native open/save dialogs. Logs, status and screenshots are
 kept in `test-results/` for diagnosis. A failed native startup fails the test;
 there is no browser fallback.
+The GUI under test uses a visible launch. Restart checks require confirmed process
+exit. Test builds log startup phases; CI retains only synthetic-test logs, status
+and screenshots for seven days, excluding databases.
 
 To inspect the same disposable integration workbench manually:
 
@@ -111,7 +118,8 @@ The first implementation was checked with Node 24.11.0, npm 11.20.0, Rust 1.93.1
 Visual Studio 2022 C++ tools and WebView2 on the development Windows host.
 This does not establish minimum-OS support, hardware budgets, or macOS behavior.
 The foundation's Windows/macOS CI passed on [PR #1](https://github.com/misc9115-boop/lang/pull/1).
-That run predates backup/recovery and the native smoke test added here.
+Backup/recovery and native IPC/restart checks also passed on both CI hosts in
+[PR #2](https://github.com/misc9115-boop/lang/pull/2). These runs predate the content-contract increment.
 See [validation notes](docs/IMPLEMENTATION.md#validation-record).
 
 ## Still required
