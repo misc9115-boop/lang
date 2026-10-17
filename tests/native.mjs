@@ -180,6 +180,7 @@ async function stop() {
 }
 try {
   await start();
+  await textIncludes("A place to begin your Italian.");
   const migrationCopies = (await invoke("list_recovery_backups")).filter(
     (entry) => entry.id.startsWith("pre-migrate-v1-to-v2-"),
   );
@@ -205,7 +206,6 @@ try {
       "Recovery fixture did not become usable",
     );
   }
-  await textIncludes("A place to begin your Italian.");
   await click("C2 CEFR");
   // The time zone field uses a stable placeholder in the real application.
   await fill('input[placeholder="America/Chicago"]', "America/Chicago");
