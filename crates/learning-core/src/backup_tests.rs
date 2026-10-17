@@ -959,3 +959,32 @@ fn real_v2_review_history_upgrades_with_identical_v2_recovery() {
     assert_eq!(s.review_overview(now()).unwrap().available_count, 1);
     assert!(s.export_backup(now()).is_ok());
 }
+
+#[test]
+fn submission_ids_cannot_cross_lesson_and_review_interactions() {
+    let mut s = review_ready();
+    let r = s.start_review(true, now()).unwrap();
+    let item = r.exercise.unwrap().id;
+    let old: String = s
+        .connection
+        .query_row("SELECT request_id FROM attempts LIMIT 1", [], |r| r.get(0))
+        .unwrap();
+    assert!(s
+        .review_submit(&r.id, &item, Answer::Option("a".into()), &old, now())
+        .is_err());
+    let request = Uuid::new_v4().to_string();
+    s.review_submit(&r.id, &item, Answer::Option("a".into()), &request, now())
+        .unwrap();
+    s.abort_review(&r.id, now()).unwrap();
+    let lesson = s.start("dev.a1.cafe", now()).unwrap();
+    assert!(s
+        .submit(
+            &lesson.id,
+            "dev.cafe.choice",
+            Answer::Option("a".into()),
+            &request,
+            now()
+        )
+        .is_err());
+    assert!(s.export_backup(now()).is_ok());
+}

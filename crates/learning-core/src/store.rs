@@ -316,6 +316,9 @@ impl Store {
             explanation: exercise.explanation.clone(),
         };
         let tx = self.connection.transaction().map_err(error)?;
+        if crate::review_storage::schema_version(&tx)? >= 3 && tx.query_row("SELECT EXISTS(SELECT 1 FROM review_sessions r, json_each(r.record,'$.items') i, json_each(i.value,'$.attempts') a WHERE json_extract(a.value,'$.requestId')=?1)",[request_id],|r|r.get::<_,bool>(0)).map_err(error)? {
+            return Err("Submission identifier was already used for a review interaction.".into());
+        }
         let (hinted, revealed, resolved): (bool,bool,bool) = tx.query_row("SELECT hinted,revealed,resolved FROM session_items WHERE session_id=?1 AND position=?2", params![id,position as u32], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(error)?;
         if resolved {
             return Err("This item is already resolved. Continue to the next exercise.".into());

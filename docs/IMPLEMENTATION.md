@@ -348,7 +348,7 @@ DDL. Legacy restores replace new records with empty sets after v3 recovery.
 Validation regrades saved answers and cross-checks session/history links, exact
 content sources, clocks, positions, IDs, credits and achievements.
 
-Local Windows validation: 120 core tests and 1 desktop test passed, plus workspace
+Local Windows validation: 121 core tests and 1 desktop test passed, plus workspace
 Clippy and a frontend build with zero Svelte errors/warnings. Connected-browser
 checks used the actual Rust/SQLite core with an explicitly synthetic pack in
 disposable storage: wrong answer/hint after reload, typed draft resume, Easy
