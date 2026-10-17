@@ -220,12 +220,42 @@ No installer, full native acceptance suite,
 complete architecture matrix, offline-media, speech, AI-quality, complete accessibility, minimum-OS,
 reference-hardware or resource-budget gate has been claimed as passed.
 
+### Offline text-pack library increment — 2026-10-15
+
+The core now installs validated text-pack snapshots in a separate versioned SQLite
+catalogue. [PACK-LIBRARY.md](PACK-LIBRARY.md) records the storage choice, commands,
+input/history limits and integration boundary. Text bytes and catalogue state
+commit together; activation is explicit and separately atomic. Pack/lesson/
+curriculum identities cannot be silently reused or regressed. Retained versions
+support rollback; exact original bytes repair corrupt/missing payloads. Removal
+retains identity metadata and does not touch learner state. Current external
+review trust is rechecked when loading, not copied from an installed label.
+
+Local Windows validation: **68 core tests and 1 desktop test passed**; the ignored
+subprocess helper is invoked by the passing abrupt-exit recovery test. Tests cover
+write/activation rollback, child-process interruption and reopen, immutable version
+history after removal, corrupt/missing/oversized stored bytes, changed source
+folders, competing writers, active ID conflicts, current trust revocation, draft
+isolation and saved session/draft/backup preservation. Formatting, workspace Clippy
+and release compilation passed. The real CLI lifecycle/exit-code runner passed
+using file-backed child output. A preceding local invocation timed out during
+removal; direct invocation and the complete subsequent runner passed, without a
+timeout increase or a claimed root cause. CI exercises the runner on both hosts.
+
+No learner schema, backup format, desktop command/UI, dependency, SPEC.md or café
+payload changed. The desktop still uses its embedded fixture: typed backup pack
+references and historical editorial evidence must be integrated before switching
+its lesson source. Native folder selection, downloads/media, resource measurements
+and learner-facing catalogue state remain work. This increment does not create
+reviewed content or certify any production installation.
+
 ## Next implementation work
 
 1. Verify native file dialogs manually; extend failure/crash coverage and minimum
    OS/architecture checks beyond the baseline CI hosts.
-2. Expand the text-pack authoring contract into media/alternative and installation
-   contracts; author the complete objective map and lessons with real review.
+2. Integrate the text library with typed backup references, historical trusted
+   evidence and desktop pack settings; extend to download/media/alternatives and
+   author the complete objective map and lessons with real review.
 3. Implement FSRS review, full exercises/media and accessible alternatives,
    resource-controlled pack management, and tested pre-migration recovery.
 4. Implement independent leaderboard and text/voice conversation adapters, with

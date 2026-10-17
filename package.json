@@ -8,6 +8,7 @@
     "dev": "vite",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "check:content": "cargo run -p learning-core --example check_pack --locked -- content/development",
+    "test:packs": "cargo build -p learning-core --example pack_library --locked && node tests/packs.mjs",
     "build": "npm run check && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

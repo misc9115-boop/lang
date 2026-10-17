@@ -1,6 +1,7 @@
 mod backup;
 pub mod content;
 mod model;
+pub mod pack_library;
 mod scoring;
 mod store;
 

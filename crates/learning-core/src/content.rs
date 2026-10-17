@@ -10,9 +10,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
-const MAX_LESSON_BYTES: u64 = 8 * 1024 * 1024;
-const MAX_PACK_BYTES: u64 = 64 * 1024 * 1024;
+pub(crate) const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
+pub(crate) const MAX_LESSON_BYTES: u64 = 8 * 1024 * 1024;
+pub(crate) const MAX_PACK_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_LESSONS: usize = 1000;
 const READER_VERSION: u32 = 1;
 const LEVELS: [&str; 6] = ["A1", "A2", "B1", "B2", "C1", "C2"];
@@ -216,6 +216,8 @@ pub struct ValidatedPack {
     pub manifest: PackManifest,
     pub lessons: Vec<Lesson>,
     pub report: PackReport,
+    pub(crate) manifest_bytes: Vec<u8>,
+    pub(crate) files: BTreeMap<String, Vec<u8>>,
 }
 
 fn text(value: &str, name: &str) -> Result<()> {
@@ -340,6 +342,21 @@ fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>> {
 pub fn validate_pack(root: &Path, trust: &ContentTrust) -> Result<ValidatedPack> {
     let root = root.canonicalize().map_err(|e| e.to_string())?;
     let manifest_bytes = read_bounded(&file_path(&root, "pack.json")?, MAX_MANIFEST_BYTES)?;
+    validate_bytes(manifest_bytes, trust, |name, limit| {
+        read_bounded(&file_path(&root, name)?, limit)
+    })
+}
+
+// The library and directory reader share the same contract. Retain the exact
+// checked bytes so installation never reopens mutable source files after validation.
+pub(crate) fn validate_bytes(
+    manifest_bytes: Vec<u8>,
+    trust: &ContentTrust,
+    mut read: impl FnMut(&str, u64) -> Result<Vec<u8>>,
+) -> Result<ValidatedPack> {
+    if manifest_bytes.len() as u64 > MAX_MANIFEST_BYTES {
+        return Err("Pack manifest exceeds the reader's size limit.".into());
+    }
     let manifest: PackManifest = serde_json::from_slice(&manifest_bytes)
         .map_err(|e| format!("Invalid pack manifest: {e}"))?;
     let digest = sha256(&manifest_bytes);
@@ -466,6 +483,7 @@ pub fn validate_pack(root: &Path, trust: &ContentTrust) -> Result<ValidatedPack>
     let mut evidence: BTreeMap<&str, BTreeSet<Skill>> = BTreeMap::new();
     let mut directions = BTreeSet::new();
     let mut lessons = vec![];
+    let mut verified_files = BTreeMap::new();
     let mut payload_bytes = 0u64;
     let mut unmeasured_pacing = vec![];
     let mut pacing_outside_target = vec![];
@@ -503,7 +521,7 @@ pub fn validate_pack(root: &Path, trust: &ContentTrust) -> Result<ValidatedPack>
             return Err("Pack SHA-256 values must be 64 lowercase hexadecimal characters.".into());
         }
         provenance(&record.provenance)?;
-        let bytes = read_bounded(&file_path(&root, &record.file.path)?, record.file.bytes)?;
+        let bytes = read(&record.file.path, record.file.bytes)?;
         if bytes.len() as u64 != record.file.bytes || sha256(&bytes) != record.file.sha256 {
             return Err(format!(
                 "Pack integrity verification failed: {}",
@@ -512,6 +530,7 @@ pub fn validate_pack(root: &Path, trust: &ContentTrust) -> Result<ValidatedPack>
         }
         let lesson: Lesson = serde_json::from_slice(&bytes)
             .map_err(|e| format!("Invalid lesson {}: {e}", record.lesson_id))?;
+        verified_files.insert(record.file.path.clone(), bytes);
         if lesson.exercises.len() > 1000
             || lesson
                 .exercises
@@ -754,6 +773,8 @@ pub fn validate_pack(root: &Path, trust: &ContentTrust) -> Result<ValidatedPack>
         manifest,
         lessons,
         report,
+        manifest_bytes,
+        files: verified_files,
     })
 }
 

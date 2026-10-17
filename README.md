@@ -25,6 +25,10 @@ The displayed name, monogram, and geometric artwork are development placeholders
 - Offline authoring preflight for versioned text packs: objective/unit/skill
   mappings, provenance, file hashes and coverage gaps. Run `npm run check:content`;
   see the [content contract](docs/CONTENT-PACKS.md). This does not install or approve content.
+- A separate offline text-pack library and CLI: atomic local installation,
+  verification, explicit activation/rollback, removal and exact-version repair.
+  See [library commands and integration limits](docs/PACK-LIBRARY.md). Desktop
+  pack settings and backup pack references are not connected yet.
 
 Development fixtures cannot earn learner XP, streaks, achievements, or course
 credit. See [content status](content/README.md) and the [implementation record](docs/IMPLEMENTATION.md).
@@ -72,6 +76,7 @@ cargo fmt --all --check
 cargo test -p learning-core --locked
 cargo test -p lang-desktop --locked
 npm run check:content
+npm run test:packs
 cargo clippy --workspace --all-targets --locked -- -D warnings
 npm run test:ui
 npm run test:native
@@ -126,7 +131,7 @@ See [validation notes](docs/IMPLEMENTATION.md#validation-record).
 
 Reviewed beginner–C2 curriculum and objective coverage; placement/checkpoints;
 all audio, dictation, listening and offline speaking; extended writing/rubrics;
-FSRS review; full reference browsing; pack installation/integrity/repair;
+FSRS review; full reference browsing; desktop pack management/downloads/media;
 tested data-transforming migrations; remaining achievements and
 reminders; authenticated leaderboard/outbox; real text/voice conversation
 adapters; privacy/deletion controls; installers, signing and update consent;
