@@ -132,7 +132,8 @@ See [validation notes](docs/IMPLEMENTATION.md#validation-record).
 
 Reviewed beginner–C2 curriculum and objective coverage; placement/checkpoints;
 all audio, dictation, listening and offline speaking; extended writing/rubrics;
-FSRS review; full reference browsing; desktop pack management/downloads/media;
+learner-facing FSRS review (the [scheduling kernel](docs/REVIEW.md) is implemented);
+full reference browsing; pack downloads/media;
 tested data-transforming migrations; remaining achievements and
 reminders; authenticated leaderboard/outbox; real text/voice conversation
 adapters; privacy/deletion controls; installers, signing and update consent;
@@ -147,3 +148,4 @@ Original code: [MIT](LICENSE). Eligible original curriculum/media: CC BY 4.0,
 with item-specific provenance and review status; see [content/README.md](content/README.md).
 Third-party dependencies retain their respective licenses. A full dependency
 notice/rights audit is still a public-release gate.
+The FSRS dependency notice is retained in [licenses/fsrs-BSD-3-Clause.txt](licenses/fsrs-BSD-3-Clause.txt).
