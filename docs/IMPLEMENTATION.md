@@ -8,7 +8,8 @@ confirmed product requirements or mark unimplemented obligations complete.
 
 `src/` renders the local interface and invokes named Rust commands. The browser
 does not grade answers, award XP, or write SQL. `src-tauri/` owns the application
-data location, trusted current time and a mutex-protected `Store`.
+data location, trusted current time and a mutex-protected `StudyWorkspace` coordinating
+the learner `Store` and pack library.
 `crates/learning-core/` validates settings, interprets versioned lesson snapshots,
 evaluates accepted answers and commits learner state to SQLite. It has no HTTP
 client, AI client, media engine, analytics or login dependency.
@@ -249,12 +250,40 @@ its lesson source. Native folder selection, downloads/media, resource measuremen
 and learner-facing catalogue state remain work. This increment does not create
 reviewed content or certify any production installation.
 
+### Desktop pack integration — 2026-10-15
+
+Settings now chooses native pack directories, previews size/license/attribution
+and review status, and requires explicit confirmation for installation and version
+changes. Previews are one-use and pinned to verified source bytes. The shared
+`StudyWorkspace` coordinates the library and learner state. Learn reads verified
+active lessons; corruption is surfaced without silently substituting the fixture.
+No learner or catalogue schema migration was needed.
+
+Backups now include typed exact pack references. Restore requires matching local
+verified versions and validates reviewed snapshots against inactive historical
+versions too. The desktop prevents deleting reviewed versions used by saved
+history. Missing/revoked authority blocks new answer changes/credit without
+deleting snapshots or progress. Confirmed historical caching permits recovery
+when a newer pack was installed first, while preserving immutable identities.
+Legacy empty-reference archives remain supported. No actual editorial approval
+or trusted release digest has been added.
+
+Local Windows: **76 core tests plus 1 desktop test passed**; formatting, workspace
+Clippy, release compilation and the frontend build passed with no Svelte warnings.
+Connected-browser checks against disposable real Rust/SQLite storage verified
+preview, confirmation, installation, activation and active state after reload.
+Dark 200% text at 720px had document width 705px with no horizontal overflow.
+The standalone browser runner could not start its browser on this host; it is
+not a local pass. CI now exercises the complete pack UI flow through its labelled
+folder-selection adapter and native activation/persistence over actual IPC.
+Native folder/open/save dialogs, full accessibility and resource budgets remain
+unverified. SPEC.md, the café payload and dependency locks are unchanged.
+
 ## Next implementation work
 
 1. Verify native file dialogs manually; extend failure/crash coverage and minimum
    OS/architecture checks beyond the baseline CI hosts.
-2. Integrate the text library with typed backup references, historical trusted
-   evidence and desktop pack settings; extend to download/media/alternatives and
+2. Extend packs to download/media/alternatives and
    author the complete objective map and lessons with real review.
 3. Implement FSRS review, full exercises/media and accessible alternatives,
    resource-controlled pack management, and tested pre-migration recovery.

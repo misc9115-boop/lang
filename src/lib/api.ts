@@ -65,6 +65,7 @@ export type AppState = {
   activeSession: Session | null;
   progress: Progress;
   developmentBuild: boolean;
+  contentIssues: string[];
 };
 export type BackupTicket = {
   token: string;
@@ -77,9 +78,38 @@ export type BackupTicket = {
     activeLesson: string | null;
     development: boolean;
     fingerprint: string;
+    packReferences: PackReference[];
   };
 };
 export type RecoveryEntry = { id: string; savedAt: string };
+export type PackReference = {
+  packId: string;
+  version: number;
+  manifestSha256: string;
+};
+export type PackRecord = {
+  entry: PackReference & {
+    stored: boolean;
+    active: boolean;
+    payloadBytes: number;
+    installedAt: string;
+  };
+  title: string | null;
+  editorialStatus: "draft" | "approved" | null;
+  error: string | null;
+};
+export type PackState = { entries: PackRecord[]; issues: string[] };
+export type PackTicket = {
+  token: string;
+  packId: string;
+  version: number;
+  title: string;
+  payloadBytes: number;
+  lessonCount: number;
+  editorialStatus: "draft" | "approved";
+  license: string;
+  attribution: string;
+};
 
 export async function command<T>(
   name: string,

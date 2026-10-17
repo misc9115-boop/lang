@@ -129,6 +129,14 @@
           <dd>{ticket.preview.completedLessons}</dd>
         </div>
       </dl>
+      <p>
+        Referenced pack versions: {ticket.preview.packReferences.length}.
+        Matching versions are already verified on this computer. Restoring does
+        not download packs or change the version currently in use.
+      </p>
+      {#each ticket.preview.packReferences as reference}<p class="muted">
+          {reference.packId} · Version {reference.version}
+        </p>{/each}
       {#if ticket.preview.activeLesson}<p>
           Saved lesson: {ticket.preview.activeLesson}
         </p>{/if}

@@ -5,7 +5,7 @@ use crate::{
 };
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::HashSet, path::Path};
 
@@ -37,6 +37,21 @@ pub struct PackEntry {
     pub active: bool,
     pub payload_bytes: u64,
     pub installed_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PackReference {
+    pub pack_id: String,
+    pub version: u32,
+    pub manifest_sha256: String,
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct ContentContext {
+    pub managed: bool,
+    pub references: Vec<PackReference>,
+    pub reviewed_snapshots: HashSet<String>,
 }
 
 pub struct PackLibrary {
@@ -103,6 +118,21 @@ impl PackLibrary {
         self.install_verified(pack)
     }
 
+    pub fn install_previewed(&mut self, root: &Path, expected_digest: &str) -> Result<PackEntry> {
+        let pack = content::validate_pack(root, &self.trust)?;
+        self.check_mode(&pack)?;
+        if pack.report.manifest_sha256 != expected_digest {
+            return Err("The pack changed after preview. Choose its folder again.".into());
+        }
+        self.install_verified_inner(pack, true)
+    }
+
+    pub fn preview_directory(&self, root: &Path) -> Result<ValidatedPack> {
+        let pack = content::validate_pack(root, &self.trust)?;
+        self.check_mode(&pack)?;
+        Ok(pack)
+    }
+
     fn check_mode(&self, pack: &ValidatedPack) -> Result<()> {
         if self.mode == LibraryMode::ReviewedOnly
             && pack.manifest.editorial_status != EditorialStatus::Approved
@@ -113,6 +143,14 @@ impl PackLibrary {
     }
 
     fn install_verified(&mut self, pack: ValidatedPack) -> Result<PackEntry> {
+        self.install_verified_inner(pack, false)
+    }
+
+    fn install_verified_inner(
+        &mut self,
+        pack: ValidatedPack,
+        allow_historical: bool,
+    ) -> Result<PackEntry> {
         let id = &pack.manifest.id;
         let version = pack.manifest.version;
         let tx = self
@@ -145,7 +183,8 @@ impl PackLibrary {
                     |r| r.get(0),
                 )
                 .map_err(error)?;
-            if version <= highest {
+            let historical = allow_historical && version < highest;
+            if version <= highest && !historical {
                 return Err("A new pack version must exceed its recorded history. Use activate for an installed rollback.".into());
             }
             // Keep semantic identity history even if the user removes payloads.
@@ -163,6 +202,7 @@ impl PackLibrary {
                     &lesson.id,
                     lesson.version,
                     &record.file.sha256,
+                    historical,
                 )?;
             }
             let curriculum = &pack.manifest.curriculum;
@@ -174,6 +214,7 @@ impl PackLibrary {
                 &curriculum.id,
                 curriculum.version,
                 &hash(&bytes),
+                historical,
             )?;
             tx.execute(
                 "INSERT INTO pack_versions(pack_id,version,digest,manifest,stored,payload_bytes,installed_at) VALUES(?1,?2,?3,?4,0,?5,?6)",
@@ -400,9 +441,10 @@ fn record_identity(
     id: &str,
     version: u32,
     digest: &str,
+    historical: bool,
 ) -> Result<()> {
     let highest: u32 = connection.query_row("SELECT coalesce(max(version),0) FROM identities WHERE pack_id=?1 AND kind=?2 AND content_id=?3", params![pack,kind,id], |r| r.get(0)).map_err(error)?;
-    if version < highest {
+    if version < highest && !historical {
         return Err(format!("{kind} {id} regresses its recorded version."));
     }
     let previous: Option<String> = connection.query_row("SELECT digest FROM identities WHERE pack_id=?1 AND kind=?2 AND content_id=?3 AND version=?4", params![pack,kind,id,version], |r| r.get(0)).optional().map_err(error)?;

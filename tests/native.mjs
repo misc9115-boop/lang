@@ -219,11 +219,30 @@ try {
   const recovery = JSON.parse(
     readFileSync(path.join(root, "backups", created.id), "utf8"),
   );
+  assert.equal(recovery.body.data.installedPackReferences.length, 1);
   assert.equal(recovery.body.data.settings.level, "C2");
   assert.equal(recovery.body.data.sessions.length, 0);
   console.log(
     "PASS native IPC, preview, cancel, restore and recovery contents",
   );
+  await textIncludes("Offline lesson packs");
+  await click("Use version 1");
+  assert.equal(
+    await script(
+      'return [...document.querySelectorAll("button")].find(b=>b.innerText.trim()==="Confirm pack change").disabled;',
+    ),
+    true,
+  );
+  await wait(
+    () =>
+      script(
+        'const label=[...document.querySelectorAll("label")].find(l=>l.textContent.replace(/\\s+/g," ").includes("Confirm this pack change."));const field=label?.querySelector("input");if(!field||field.disabled)return false;if(!field.checked)field.click();return field.checked;',
+      ),
+    "Pack confirmation did not become usable",
+  );
+  await click("Confirm pack change");
+  await textIncludes("Selected content is ready for offline study.");
+  assert.equal((await invoke("pack_state")).entries[0].entry.active, true);
   await click("Learn");
   await click("Resume saved lesson →");
   await textIncludes("Translate into Italian.");
@@ -252,6 +271,7 @@ try {
     "Un caffè per favore",
   );
   const after = await invoke("app_state");
+  assert.equal((await invoke("pack_state")).entries[0].entry.active, true);
   assert.equal(after.settings.level, "A1");
   assert.equal(after.progress.totalXp, 0);
   await stop();

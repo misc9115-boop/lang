@@ -2,7 +2,7 @@
 //! Uses the real learning core with a disposable SQLite database and draft content.
 use chrono::Utc;
 use learning_core::{
-    development_lesson, read_backup_file, write_new_backup, BackupController, Store,
+    development_lesson, read_backup_file, write_new_backup, BackupController, Store, StudyWorkspace,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -21,7 +21,7 @@ struct TestFiles {
     cancel_next: bool,
 }
 fn call(
-    store: &mut Store,
+    store: &mut StudyWorkspace,
     files: &mut TestFiles,
     cmd: &str,
     args: &Value,
@@ -30,6 +30,26 @@ fn call(
     let session = || field::<String>(args, "sessionId");
     let exercise = || field::<String>(args, "exerciseId");
     let value = match cmd {
+        "pack_state" => json!(store.pack_state()),
+        "choose_pack_folder" => {
+            store.cancel_pack();
+            if files.cancel_next {
+                files.cancel_next = false;
+                Value::Null
+            } else {
+                json!(store.prepare_pack(&files.root.join("pack-source"))?)
+            }
+        }
+        "install_pack" => json!(store.install_pack(&field::<String>(args, "token")?)?),
+        "cancel_pack_install" => {
+            store.cancel_pack();
+            Value::Null
+        }
+        "change_pack" => json!(store.change_pack(
+            &field::<String>(args, "action")?,
+            &field::<String>(args, "packId")?,
+            field(args, "version")?
+        )?),
         "test_cancel_next_dialog" => {
             files.cancel_next = true;
             Value::Null
@@ -187,15 +207,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &root.join("backups/pre-import-native-fixture.langbackup"),
             &source.export_backup(Utc::now())?,
         )?;
+        create_pack_source(&root.join("pack-source"))?;
+        let mut library = learning_core::pack_library::PackLibrary::open(
+            &root.join("development-packs.sqlite3"),
+            learning_core::content::ContentTrust::default(),
+            learning_core::pack_library::LibraryMode::Development,
+        )?;
+        library.install_directory(&root.join("pack-source"))?;
         println!("Created an unreviewed native-test recovery fixture in isolated storage.");
         return Ok(());
     }
     let directory = tempfile::tempdir()?;
-    let mut store = Store::open(
+    let store = Store::open(
         &directory.path().join("ui-test.db"),
         vec![development_lesson()?],
         true,
     )?;
+    create_pack_source(&directory.path().join("pack-source"))?;
+    let library = learning_core::pack_library::PackLibrary::open(
+        &directory.path().join("packs.sqlite3"),
+        learning_core::content::ContentTrust::default(),
+        learning_core::pack_library::LibraryMode::Development,
+    );
+    let mut store = StudyWorkspace::new(store, library);
     let server = Server::http("127.0.0.1:1421").map_err(std::io::Error::other)?;
     let mut files = TestFiles {
         root: directory.path().to_path_buf(),
@@ -236,5 +270,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         request.respond(response)?;
     }
+    Ok(())
+}
+
+fn create_pack_source(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    fs::create_dir_all(path)?;
+    fs::write(
+        path.join("pack.json"),
+        include_bytes!("../../../content/development/pack.json"),
+    )?;
+    fs::write(
+        path.join("cafe.json"),
+        include_bytes!("../../../content/development/cafe.json"),
+    )?;
     Ok(())
 }

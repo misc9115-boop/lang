@@ -39,10 +39,11 @@ fn prepare(app: &AppHandle, path: &Path) -> Result<BackupTicket> {
         .controller
         .lock()
         .map_err(|_| "Backup preview is unavailable.")?;
-    let store = database
+    let mut store = database
         .0
         .lock()
         .map_err(|_| "Local storage is unavailable.")?;
+    store.pack_state();
     controller.prepare(&store, bytes, Utc::now())
 }
 
@@ -73,10 +74,11 @@ pub async fn export_learner_backup(app: AppHandle) -> Result<Option<String>> {
             return Err("Use the .langbackup file extension.".into());
         }
         let database = app.state::<Database>();
-        let store = database
+        let mut store = database
             .0
             .lock()
             .map_err(|_| "Local storage is unavailable.")?;
+        store.pack_state();
         let bytes = store.export_backup(Utc::now())?;
         write_new_backup(&path, &bytes)?;
         Ok(Some(path.to_string_lossy().into_owned()))
@@ -121,6 +123,7 @@ pub async fn restore_learner_backup(app: AppHandle, token: String) -> Result<Res
             .0
             .lock()
             .map_err(|_| "Local storage is unavailable.")?;
+        store.pack_state();
         controller.restore(&mut store, &token, &services.recovery_directory, Utc::now())
     })
     .await

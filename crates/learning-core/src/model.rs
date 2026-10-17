@@ -161,4 +161,5 @@ pub struct AppState {
     pub active_session: Option<SessionView>,
     pub progress: Progress,
     pub development_build: bool,
+    pub content_issues: Vec<String>,
 }

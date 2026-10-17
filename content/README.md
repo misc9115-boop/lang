@@ -30,6 +30,7 @@ provenance and report coverage gaps. Its duration is deliberately unmeasured.
 Passing preflight cannot approve the fixture or install it in the learner app.
 
 See [the text-pack contract](../docs/CONTENT-PACKS.md). Full reviewed objectives,
-media/alternative records and the pack installation/catalogue lifecycle still
-need implementation and real editorial work. This is not the completed public
+media/alternative records and downloads still need implementation and real
+editorial work. Local text-pack installation/version management is now in Settings;
+see [pack management](../docs/PACK-LIBRARY.md). This is not the completed public
 pack format.

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import BackupPanel from "./BackupPanel.svelte";
+  import PackPanel from "./PackPanel.svelte";
   import {
     command,
     coverage,
@@ -256,8 +257,11 @@
               leaderboards will require a connection when implemented.
             </p>
             <p>
-              This first development build has no reviewed course packs. Its
-              lesson fixture is for testing only.
+              {app.lessons.some(
+                (lesson) => lesson.editorialStatus === "approved",
+              )
+                ? "Reviewed lessons are available for offline study."
+                : "No reviewed lessons are currently active. Development lessons are for testing only."}
             </p>
           </div>{/if}
         <form
@@ -341,6 +345,13 @@
             ></button
           >
         </form>
+        <PackPanel
+          {busy}
+          run={act}
+          onChanged={async () => {
+            app = await command<AppState>("app_state");
+          }}
+        />
         <BackupPanel
           {busy}
           run={act}
@@ -355,6 +366,9 @@
         />
       </section>
     {:else if page === "learn"}
+      {#each app.contentIssues as issue}<p class="callout" role="alert">
+          {issue} Open Settings to check or repair installed packs.
+        </p>{/each}
       <section class="page-heading">
         <div>
           <span class="eyebrow">ONE STEP AT A TIME</span>
@@ -391,12 +405,35 @@
               <span class="number">01</span><span>COURSE LIBRARY</span>
             </div>
             <h2>Your course begins here</h2>
-            <p>
-              No reviewed course packs are installed. The beginner–C2
-              curriculum, audio, and speaking assets still need authoring and
-              validation.
-            </p>
-            <span class="plain-tag">Content review required</span>
+            {#if app.lessons.some((lesson) => lesson.editorialStatus === "approved")}
+              <p>
+                Reviewed lessons available for offline study. You can choose any
+                installed topic; this list does not certify full course
+                coverage.
+              </p>
+              {#each app.lessons.filter((lesson) => lesson.editorialStatus === "approved") as lesson}
+                <div class="fixture-row">
+                  <div>
+                    <strong>{lesson.title}</strong><small
+                      >{lesson.level} · {lesson.exerciseCount} exercises</small
+                    >
+                    <p>{lesson.objective}</p>
+                  </div>
+                  <button
+                    class="primary"
+                    disabled={busy || !!app.activeSession}
+                    onclick={() => act(() => begin(lesson.id))}
+                    >Start {lesson.title}</button
+                  >
+                </div>
+              {/each}
+            {:else}<p>
+                No verified, reviewed lessons are active. The beginner–C2
+                curriculum, audio, and speaking assets still need authoring and
+                validation.
+              </p>
+              <span class="plain-tag">Content review required</span>
+            {/if}
           </section>
           {#if app.activeSession}<section class="panel resume">
               <span class="eyebrow">SAVED ON THIS COMPUTER</span>
@@ -421,16 +458,16 @@
               </div>
               <h2>Try the offline lesson flow</h2>
               <p>
-                Unreviewed, AI-drafted test material. Exercises, corrections,
-                hints, and drafts save locally. This fixture earns no XP,
-                streak, achievement, or course credit.
+                Unreviewed development material. Exercises, corrections, hints,
+                and drafts save locally. This fixture earns no XP, streak,
+                achievement, or course credit.
               </p>
               {#each app.lessons.filter((lesson) => lesson.editorialStatus === "draft") as lesson}<div
                   class="fixture-row"
                 >
                   <div>
                     <strong>{lesson.title}</strong><small
-                      >{lesson.exerciseCount} exercises · A1 draft fixture</small
+                      >{lesson.exerciseCount} exercises · {lesson.level} draft lesson</small
                     >
                   </div>
                   <button
@@ -504,9 +541,9 @@
       <section class="panel">
         <h2>Skill evidence</h2>
         <p>
-          No reviewed course evidence is available. This build does not assess
-          CEFR proficiency. Review scheduling, listening, speaking, and advanced
-          writing are still to be implemented.
+          Full skill-level reporting is still being developed. This build does
+          not assess CEFR proficiency. Review scheduling, listening, speaking,
+          and advanced writing are still to be implemented.
         </p>
       </section>
     {:else if page === "lesson" && session}
