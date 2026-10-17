@@ -59,9 +59,10 @@ impl Store {
                 let tx = connection.transaction().map_err(error)?;
                 tx.execute_batch(include_str!("schema.sql")).map_err(error)?;
                 tx.execute_batch(include_str!("review_schema.sql")).map_err(error)?;
+                tx.execute_batch(include_str!("review_session_schema.sql")).map_err(error)?;
                 tx.commit().map_err(error)?;
             }
-            1 | 2 => {}
+            1..=3 => {}
             _ => return Err(format!("Database schema {version} is newer than this application supports. Your data was not changed.")),
         }
         Ok(Self {
@@ -108,6 +109,20 @@ impl Store {
             settings: self.settings()?,
             lessons: self.lessons.iter().map(Lesson::summary).collect(),
             active_session: active.map(|id| self.session(&id)).transpose()?,
+            active_review: if self.schema_version()? >= 3 {
+                let id: Option<String> = self
+                    .connection
+                    .query_row(
+                        "SELECT id FROM review_sessions WHERE status='active'",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(error)?;
+                id.map(|id| self.review_session(&id)).transpose()?
+            } else {
+                None
+            },
             progress: self.progress(now)?,
             development_build: self.development_build,
             content_issues: self.content_issues.clone(),
@@ -144,7 +159,21 @@ impl Store {
             return Err("Unreviewed lessons are unavailable in this build.".into());
         }
         let id = Uuid::new_v4().to_string();
-        let tx = self.connection.transaction().map_err(error)?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(error)?;
+        if crate::review_storage::schema_version(&tx)? >= 3
+            && tx
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM review_sessions WHERE status='active')",
+                    [],
+                    |r| r.get::<_, bool>(0),
+                )
+                .map_err(error)?
+        {
+            return Err("Finish or end the saved review before starting a lesson.".into());
+        }
         tx.execute("INSERT INTO sessions(id,lesson_id,lesson_version,lesson_snapshot,status,practice_only,started_at) VALUES(?1,?2,?3,?4,'active',?5,?6)", params![id,lesson.id,lesson.version,json(lesson)?,practice,now.to_rfc3339()]).map_err(error)?;
         for position in 0..lesson.exercises.len() {
             tx.execute(
@@ -380,27 +409,7 @@ impl Store {
                 if inserted == 1 {
                     xp = 10;
                 }
-                tx.execute(
-                    "INSERT OR IGNORE INTO achievements(id,granted_at) VALUES('first_lesson',?1)",
-                    [now.to_rfc3339()],
-                )
-                .map_err(error)?;
-                let total: u32 = tx
-                    .query_row("SELECT COALESCE(SUM(amount),0) FROM xp_ledger", [], |r| {
-                        r.get(0)
-                    })
-                    .map_err(error)?;
-                if total >= 100 {
-                    tx.execute(
-                        "INSERT OR IGNORE INTO achievements(id,granted_at) VALUES('100_xp',?1)",
-                        [now.to_rfc3339()],
-                    )
-                    .map_err(error)?;
-                }
-                let dates = day_dates(&tx)?;
-                if streaks(&dates, &date)?.1 >= 7 {
-                    tx.execute("INSERT OR IGNORE INTO achievements(id,granted_at) VALUES('7_day_streak',?1)", [now.to_rfc3339()]).map_err(error)?;
-                }
+                grant_achievements(&tx, "first_lesson", &date, now)?;
             }
             tx.execute(
                 "UPDATE sessions SET status='completed',completed_at=?1,xp_earned=?2 WHERE id=?3",
@@ -436,22 +445,29 @@ impl Store {
         } else {
             now.date_naive().to_string()
         };
+        let credits = if self.schema_version()? >= 3 {
+            "(SELECT amount,study_date FROM xp_ledger UNION ALL SELECT amount,study_date FROM review_xp)"
+        } else {
+            "xp_ledger"
+        };
         let total_xp = self
             .connection
-            .query_row("SELECT COALESCE(SUM(amount),0) FROM xp_ledger", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                &format!("SELECT COALESCE(SUM(amount),0) FROM {credits}"),
+                [],
+                |r| r.get(0),
+            )
             .map_err(error)?;
         let today_xp = self
             .connection
             .query_row(
-                "SELECT COALESCE(SUM(amount),0) FROM xp_ledger WHERE study_date=?1",
+                &format!("SELECT COALESCE(SUM(amount),0) FROM {credits} WHERE study_date=?1"),
                 [&today],
                 |r| r.get(0),
             )
             .map_err(error)?;
         let completed_lessons = self.connection.query_row("SELECT COUNT(DISTINCT lesson_id) FROM sessions WHERE status='completed' AND practice_only=0", [], |r| r.get(0)).map_err(error)?;
-        let mut statement = self.connection.prepare("SELECT d.date,d.goal,d.time_zone,COALESCE(SUM(x.amount),0) FROM study_days d LEFT JOIN xp_ledger x ON x.study_date=d.date GROUP BY d.date ORDER BY d.date").map_err(error)?;
+        let mut statement = self.connection.prepare(&format!("SELECT d.date,d.goal,d.time_zone,COALESCE(SUM(x.amount),0) FROM study_days d LEFT JOIN {credits} x ON x.study_date=d.date GROUP BY d.date ORDER BY d.date")).map_err(error)?;
         let days = statement
             .query_map([], |r| {
                 Ok(StudyDay {
@@ -558,7 +574,7 @@ pub(crate) fn validate_lesson(lesson: &Lesson) -> Result<()> {
     Ok(())
 }
 
-fn study_date(settings: &Settings, now: DateTime<Utc>) -> Result<String> {
+pub(crate) fn study_date(settings: &Settings, now: DateTime<Utc>) -> Result<String> {
     let zone = settings.time_zone.parse::<Tz>().map_err(error)?;
     Ok(now.with_timezone(&zone).date_naive().to_string())
 }
@@ -593,4 +609,44 @@ fn streaks(dates: &[String], today: &str) -> Result<(u32, u32)> {
         previous = Some(date);
     }
     Ok((current, best))
+}
+
+pub(crate) fn grant_achievements(
+    connection: &Connection,
+    first: &str,
+    date: &str,
+    now: DateTime<Utc>,
+) -> Result<()> {
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO achievements(id,granted_at) VALUES(?1,?2)",
+            params![first, now.to_rfc3339()],
+        )
+        .map_err(error)?;
+    let total: u32 = if crate::review_storage::schema_version(connection)? >= 3 {
+        connection.query_row("SELECT (SELECT COALESCE(SUM(amount),0) FROM xp_ledger)+(SELECT COALESCE(SUM(amount),0) FROM review_xp)",[],|r|r.get(0)).map_err(error)?
+    } else {
+        connection
+            .query_row("SELECT COALESCE(SUM(amount),0) FROM xp_ledger", [], |r| {
+                r.get(0)
+            })
+            .map_err(error)?
+    };
+    if total >= 100 {
+        connection
+            .execute(
+                "INSERT OR IGNORE INTO achievements(id,granted_at) VALUES('100_xp',?1)",
+                [now.to_rfc3339()],
+            )
+            .map_err(error)?;
+    }
+    if streaks(&day_dates(connection)?, date)?.1 >= 7 {
+        connection
+            .execute(
+                "INSERT OR IGNORE INTO achievements(id,granted_at) VALUES('7_day_streak',?1)",
+                [now.to_rfc3339()],
+            )
+            .map_err(error)?;
+    }
+    Ok(())
 }

@@ -16,7 +16,11 @@ const driverPath = path.resolve(
   "examples",
   process.platform === "win32" ? "ui_driver.exe" : "ui_driver",
 );
-const driver = spawn(driverPath, [], { stdio: "inherit", windowsHide: true });
+const reviewMode = process.argv.includes("--review");
+const driver = spawn(driverPath, reviewMode ? ["--synthetic-review"] : [], {
+  stdio: "inherit",
+  windowsHide: true,
+});
 const vite = await createServer({ plugins: [coreTestTransport] });
 let browser;
 let browserProcess;
@@ -97,352 +101,396 @@ try {
     return route.abort();
   });
   await page.goto("http://127.0.0.1:1420");
-  await expect(
-    page.getByRole("heading", { name: "A place to begin your Italian." }),
-  ).toBeVisible();
-  await page.getByLabel("Study time zone").fill("not/a-zone");
-  await page.getByRole("button", { name: "Open my study space" }).click();
-  await expect(page.getByRole("alert")).toContainText("valid IANA");
-  await page.getByLabel("Study time zone").fill("America/Chicago");
-  await page.getByRole("button", { name: "Open my study space" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Your learning path" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("No verified, reviewed lessons are active.", {
-      exact: false,
-    }),
-  ).toBeVisible();
-  mkdirSync("test-results", { recursive: true });
-  await page.screenshot({
-    path: "test-results/learning-path.png",
-    fullPage: true,
-  });
-  console.log("PASS onboarding validation and honest empty course state");
+  if (reviewMode) {
+    await (await import("./review-ui.mjs")).checkReview(page);
+  } else {
+    await expect(
+      page.getByRole("heading", { name: "A place to begin your Italian." }),
+    ).toBeVisible();
+    await page.getByLabel("Study time zone").fill("not/a-zone");
+    await page.getByRole("button", { name: "Open my study space" }).click();
+    await expect(page.getByRole("alert")).toContainText("valid IANA");
+    await page.getByLabel("Study time zone").fill("America/Chicago");
+    await page.getByRole("button", { name: "Open my study space" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Your learning path" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("No verified, reviewed lessons are active.", {
+        exact: false,
+      }),
+    ).toBeVisible();
+    mkdirSync("test-results", { recursive: true });
+    await page.screenshot({
+      path: "test-results/learning-path.png",
+      fullPage: true,
+    });
+    console.log("PASS onboarding validation and honest empty course state");
+    await page.getByRole("button", { name: "Review", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "0 items due" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "There is no reviewed course content bundled in this build.",
+      ),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Learn", exact: true }).click();
 
-  await page.getByRole("button", { name: "Open test lesson" }).click();
-  await page.getByRole("radio", { name: /Good evening/ }).check();
-  await page.getByRole("button", { name: "Check answer", exact: true }).click();
-  await expect(
-    page.getByText("Try again — you have unlimited retries"),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "My answer should be accepted" })
-    .click();
-  await page
-    .getByLabel("Describe your answer")
-    .fill("UI integration test report, not an actual editorial claim.");
-  await page.getByRole("button", { name: "Save local report" }).click();
-  await expect(page.getByRole("status")).toContainText("Report saved locally");
-  await page.getByRole("button", { name: "Show hint", exact: true }).click();
-  await page.getByRole("radio", { name: /A coffee, please/ }).check();
-  await page.getByRole("button", { name: "Check answer", exact: true }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Translate into Italian." }),
-  ).toBeFocused();
-  await page
-    .getByRole("textbox", { name: "Your answer", exact: true })
-    .fill("Un caffe per favore");
-  await page.getByRole("button", { name: "Check answer", exact: true }).click();
-  await expect(
-    page.getByText("Try again — you have unlimited retries"),
-  ).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "Your answer", exact: true })
-    .fill("Un caffè per favore");
-  await page.getByRole("button", { name: "Save & exit" }).click();
-  await page.reload();
-  await page.getByRole("button", { name: "Resume saved lesson" }).click();
-  await expect(
-    page.getByRole("textbox", { name: "Your answer", exact: true }),
-  ).toHaveValue("Un caffè per favore");
-  await page.getByRole("button", { name: "Check answer", exact: true }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
-  console.log(
-    "PASS real SQLite retry, hint, accent, report, and exit/reload/resume flow",
-  );
+    await page.getByRole("button", { name: "Open test lesson" }).click();
+    await page.getByRole("radio", { name: /Good evening/ }).check();
+    await page
+      .getByRole("button", { name: "Check answer", exact: true })
+      .click();
+    await expect(
+      page.getByText("Try again — you have unlimited retries"),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "My answer should be accepted" })
+      .click();
+    await page
+      .getByLabel("Describe your answer")
+      .fill("UI integration test report, not an actual editorial claim.");
+    await page.getByRole("button", { name: "Save local report" }).click();
+    await expect(page.getByRole("status")).toContainText(
+      "Report saved locally",
+    );
+    await page.getByRole("button", { name: "Show hint", exact: true }).click();
+    await page.getByRole("radio", { name: /A coffee, please/ }).check();
+    await page
+      .getByRole("button", { name: "Check answer", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Translate into Italian." }),
+    ).toBeFocused();
+    await page
+      .getByRole("textbox", { name: "Your answer", exact: true })
+      .fill("Un caffe per favore");
+    await page
+      .getByRole("button", { name: "Check answer", exact: true })
+      .click();
+    await expect(
+      page.getByText("Try again — you have unlimited retries"),
+    ).toBeVisible();
+    await page
+      .getByRole("textbox", { name: "Your answer", exact: true })
+      .fill("Un caffè per favore");
+    await page.getByRole("button", { name: "Save & exit" }).click();
+    await page.reload();
+    await page.getByRole("button", { name: "Resume saved lesson" }).click();
+    await expect(
+      page.getByRole("textbox", { name: "Your answer", exact: true }),
+    ).toHaveValue("Un caffè per favore");
+    await page
+      .getByRole("button", { name: "Check answer", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Continue" }).click();
+    console.log(
+      "PASS real SQLite retry, hint, accent, report, and exit/reload/resume flow",
+    );
 
-  const bank = page.getByRole("group", { name: "Available words" });
-  for (const word of ["Il", "conto,", "per", "favore"])
-    await bank.getByRole("button", { name: word, exact: true }).click();
-  await page.getByRole("button", { name: "Check answer", exact: true }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page
-    .getByRole("button", { name: "Review solution", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("radio", { name: /A coffee/ }).check();
-  await page.getByRole("button", { name: "Check answer", exact: true }).click();
-  await page.getByRole("button", { name: "Finish lesson" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Test lesson complete" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("1 items with hints · 1 solutions reviewed"),
-  ).toBeVisible();
-  const finalState = await page.evaluate(() =>
-    window.__TAURI_INTERNALS__.invoke("app_state"),
-  );
-  assert.equal(finalState.progress.totalXp, 0);
-  assert.equal(finalState.progress.completedLessons, 0);
-  assert.deepEqual(finalState.progress.achievements, []);
-  await page.screenshot({
-    path: "test-results/lesson-summary.png",
-    fullPage: true,
-  });
-  console.log(
-    "PASS ordering, reveal, reading, completion, and draft exclusion from XP",
-  );
+    const bank = page.getByRole("group", { name: "Available words" });
+    for (const word of ["Il", "conto,", "per", "favore"])
+      await bank.getByRole("button", { name: word, exact: true }).click();
+    await page
+      .getByRole("button", { name: "Check answer", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page
+      .getByRole("button", { name: "Review solution", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("radio", { name: /A coffee/ }).check();
+    await page
+      .getByRole("button", { name: "Check answer", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Finish lesson" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Test lesson complete" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("1 items with hints · 1 solutions reviewed"),
+    ).toBeVisible();
+    const finalState = await page.evaluate(() =>
+      window.__TAURI_INTERNALS__.invoke("app_state"),
+    );
+    assert.equal(finalState.progress.totalXp, 0);
+    assert.equal(finalState.progress.completedLessons, 0);
+    assert.deepEqual(finalState.progress.achievements, []);
+    await page.screenshot({
+      path: "test-results/lesson-summary.png",
+      fullPage: true,
+    });
+    console.log(
+      "PASS ordering, reveal, reading, completion, and draft exclusion from XP",
+    );
 
-  await page.getByRole("button", { name: "Back to my path" }).click();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "C2 CEFR", exact: true }).click();
-  await page.getByLabel("Appearance", { exact: true }).selectOption("dark");
-  await page.getByLabel("Text size", { exact: true }).selectOption("200");
-  await page
-    .getByRole("button", { name: "Save settings", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Find the precise expression" }),
-  ).toBeVisible();
-  assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
-  assert.equal(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth > window.innerWidth,
-    ),
-    false,
-    "No horizontal overflow at 200% text size",
-  );
-  await page.screenshot({
-    path: "test-results/dark-large-text.png",
-    fullPage: true,
-  });
-  await page.setViewportSize({ width: 720, height: 900 });
-  assert.equal(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth > window.innerWidth,
-    ),
-    false,
-    "No horizontal overflow at narrow width and 200% text",
-  );
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByLabel("Text size", { exact: true }).selectOption("100");
-  await page.getByLabel("Appearance", { exact: true }).selectOption("light");
-  await page
-    .getByRole("button", { name: "Save settings", exact: true })
-    .click();
-  await page.keyboard.press("Tab");
-  const focusedTag = await page.evaluate(() => document.activeElement?.tagName);
-  assert.ok(["BUTTON", "A", "MAIN"].includes(focusedTag));
-  assert.deepEqual(errors, []);
-  assert.deepEqual(externalRequests, []);
-  console.log(
-    "PASS level changes, dark theme, 200% text, narrow layout, keyboard, and no external page requests",
-  );
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Export backup", exact: true })
-    .click();
-  await expect(
-    page.getByText("Backup saved to", { exact: false }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "A1 CEFR", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Save settings", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Choose backup to restore", exact: true })
-    .click();
-  await expect(
-    page.getByText("Review item histories", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Restore this backup", exact: true }),
-  ).toBeDisabled();
-  await page
-    .getByRole("button", { name: "Cancel restore", exact: true })
-    .click();
-  assert.equal(
-    (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("app_state")))
-      .settings.level,
-    "A1",
-  );
-  await page.evaluate(() =>
-    window.__TAURI_INTERNALS__.invoke("test_cancel_next_dialog"),
-  );
-  await page
-    .getByRole("button", { name: "Choose backup to restore", exact: true })
-    .click();
-  await expect(
-    page.getByText("File selection cancelled.", { exact: false }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Choose backup to restore", exact: true })
-    .click();
-  await page
-    .getByRole("checkbox", {
-      name: "I understand this replaces my current local study data.",
-    })
-    .check();
-  await page
-    .getByRole("button", { name: "Restore this backup", exact: true })
-    .click();
-  await expect(
-    page.getByText("Backup restored.", { exact: false }),
-  ).toBeVisible();
-  assert.equal(
-    (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("app_state")))
-      .settings.level,
-    "C2",
-  );
-  await page
-    .getByRole("button", { name: "Preview recovery copy", exact: true })
-    .click();
-  await page
-    .getByRole("checkbox", {
-      name: "I understand this replaces my current local study data.",
-    })
-    .check();
-  await page
-    .getByRole("button", { name: "Restore this backup", exact: true })
-    .click();
-  assert.equal(
-    (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("app_state")))
-      .settings.level,
-    "A1",
-  );
-  await page.evaluate(() =>
-    window.__TAURI_INTERNALS__.invoke("test_corrupt_selected_backup"),
-  );
-  await page
-    .getByRole("button", { name: "Choose backup to restore", exact: true })
-    .click();
-  await expect(page.getByRole("alert")).toContainText(
-    "checksum verification failed",
-  );
-  assert.equal(
-    (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("app_state")))
-      .settings.level,
-    "A1",
-  );
-  await page.screenshot({
-    path: "test-results/backups-recovery.png",
-    fullPage: true,
-  });
-  assert.deepEqual(errors, []);
-  console.log(
-    "PASS real backup export, confirmation, cancel, replacement, recovery, and corrupt archive rejection (test file-selection adapter)",
-  );
-  const packs = page.getByRole("region", { name: "Offline lesson packs" });
-  await packs
-    .getByRole("button", { name: "Choose pack folder", exact: true })
-    .click();
-  await expect(
-    packs.getByRole("button", { name: "Install pack", exact: true }),
-  ).toBeDisabled();
-  await packs
-    .getByRole("button", { name: "Cancel pack change", exact: true })
-    .click();
-  await page.evaluate(() =>
-    window.__TAURI_INTERNALS__.invoke("test_cancel_next_dialog"),
-  );
-  await packs
-    .getByRole("button", { name: "Choose pack folder", exact: true })
-    .click();
-  await expect(
-    packs.getByText("Folder selection cancelled.", { exact: false }),
-  ).toBeVisible();
-  await packs
-    .getByRole("button", { name: "Choose pack folder", exact: true })
-    .click();
-  await packs
-    .getByRole("checkbox", { name: /I want to install this pack/ })
-    .check();
-  assert.equal(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth > innerWidth,
-    ),
-    false,
-    "Pack preview wraps at minimum width and enlarged text",
-  );
-  await packs
-    .getByRole("button", { name: "Install pack", exact: true })
-    .click();
-  await expect(
-    packs.getByText("Pack installed.", { exact: false }),
-  ).toBeVisible();
-  await expect(
-    packs.getByRole("button", { name: "Choose pack folder", exact: true }),
-  ).toBeFocused();
-  await packs
-    .getByRole("button", { name: "Use version 1", exact: true })
-    .click();
-  await expect(
-    packs.getByRole("button", { name: "Confirm pack change", exact: true }),
-  ).toBeDisabled();
-  await packs
-    .getByRole("button", { name: "Cancel pack change", exact: true })
-    .click();
-  async function confirmPackAction(label) {
-    await packs.getByRole("button", { name: label, exact: true }).click();
+    await page.getByRole("button", { name: "Back to my path" }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("button", { name: "C2 CEFR", exact: true }).click();
+    await page.getByLabel("Appearance", { exact: true }).selectOption("dark");
+    await page.getByLabel("Text size", { exact: true }).selectOption("200");
+    await page
+      .getByRole("button", { name: "Save settings", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Find the precise expression" }),
+    ).toBeVisible();
+    assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth > window.innerWidth,
+      ),
+      false,
+      "No horizontal overflow at 200% text size",
+    );
+    await page.screenshot({
+      path: "test-results/dark-large-text.png",
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 720, height: 900 });
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth > window.innerWidth,
+      ),
+      false,
+      "No horizontal overflow at narrow width and 200% text",
+    );
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByLabel("Text size", { exact: true }).selectOption("100");
+    await page.getByLabel("Appearance", { exact: true }).selectOption("light");
+    await page
+      .getByRole("button", { name: "Save settings", exact: true })
+      .click();
+    await page.keyboard.press("Tab");
+    const focusedTag = await page.evaluate(
+      () => document.activeElement?.tagName,
+    );
+    assert.ok(["BUTTON", "A", "MAIN"].includes(focusedTag));
+    assert.deepEqual(errors, []);
+    assert.deepEqual(externalRequests, []);
+    console.log(
+      "PASS level changes, dark theme, 200% text, narrow layout, keyboard, and no external page requests",
+    );
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Export backup", exact: true })
+      .click();
+    await expect(
+      page.getByText("Backup saved to", { exact: false }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "A1 CEFR", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Save settings", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Choose backup to restore", exact: true })
+      .click();
+    await expect(
+      page.getByText("Review item histories", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Restore this backup", exact: true }),
+    ).toBeDisabled();
+    await page
+      .getByRole("button", { name: "Cancel restore", exact: true })
+      .click();
+    assert.equal(
+      (
+        await page.evaluate(() =>
+          window.__TAURI_INTERNALS__.invoke("app_state"),
+        )
+      ).settings.level,
+      "A1",
+    );
+    await page.evaluate(() =>
+      window.__TAURI_INTERNALS__.invoke("test_cancel_next_dialog"),
+    );
+    await page
+      .getByRole("button", { name: "Choose backup to restore", exact: true })
+      .click();
+    await expect(
+      page.getByText("File selection cancelled.", { exact: false }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Choose backup to restore", exact: true })
+      .click();
+    await page
+      .getByRole("checkbox", {
+        name: "I understand this replaces my current local study data.",
+      })
+      .check();
+    await page
+      .getByRole("button", { name: "Restore this backup", exact: true })
+      .click();
+    await expect(
+      page.getByText("Backup restored.", { exact: false }),
+    ).toBeVisible();
+    assert.equal(
+      (
+        await page.evaluate(() =>
+          window.__TAURI_INTERNALS__.invoke("app_state"),
+        )
+      ).settings.level,
+      "C2",
+    );
+    await page
+      .getByRole("button", { name: "Preview recovery copy", exact: true })
+      .click();
+    await page
+      .getByRole("checkbox", {
+        name: "I understand this replaces my current local study data.",
+      })
+      .check();
+    await page
+      .getByRole("button", { name: "Restore this backup", exact: true })
+      .click();
+    assert.equal(
+      (
+        await page.evaluate(() =>
+          window.__TAURI_INTERNALS__.invoke("app_state"),
+        )
+      ).settings.level,
+      "A1",
+    );
+    await page.evaluate(() =>
+      window.__TAURI_INTERNALS__.invoke("test_corrupt_selected_backup"),
+    );
+    await page
+      .getByRole("button", { name: "Choose backup to restore", exact: true })
+      .click();
+    await expect(page.getByRole("alert")).toContainText(
+      "checksum verification failed",
+    );
+    assert.equal(
+      (
+        await page.evaluate(() =>
+          window.__TAURI_INTERNALS__.invoke("app_state"),
+        )
+      ).settings.level,
+      "A1",
+    );
+    await page.screenshot({
+      path: "test-results/backups-recovery.png",
+      fullPage: true,
+    });
+    assert.deepEqual(errors, []);
+    console.log(
+      "PASS real backup export, confirmation, cancel, replacement, recovery, and corrupt archive rejection (test file-selection adapter)",
+    );
+    const packs = page.getByRole("region", { name: "Offline lesson packs" });
     await packs
-      .getByRole("checkbox", { name: "Confirm this pack change." })
+      .getByRole("button", { name: "Choose pack folder", exact: true })
+      .click();
+    await expect(
+      packs.getByRole("button", { name: "Install pack", exact: true }),
+    ).toBeDisabled();
+    await packs
+      .getByRole("button", { name: "Cancel pack change", exact: true })
+      .click();
+    await page.evaluate(() =>
+      window.__TAURI_INTERNALS__.invoke("test_cancel_next_dialog"),
+    );
+    await packs
+      .getByRole("button", { name: "Choose pack folder", exact: true })
+      .click();
+    await expect(
+      packs.getByText("Folder selection cancelled.", { exact: false }),
+    ).toBeVisible();
+    await packs
+      .getByRole("button", { name: "Choose pack folder", exact: true })
+      .click();
+    await packs
+      .getByRole("checkbox", { name: /I want to install this pack/ })
+      .check();
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth > innerWidth,
+      ),
+      false,
+      "Pack preview wraps at minimum width and enlarged text",
+    );
+    await packs
+      .getByRole("button", { name: "Install pack", exact: true })
+      .click();
+    await expect(
+      packs.getByText("Pack installed.", { exact: false }),
+    ).toBeVisible();
+    await expect(
+      packs.getByRole("button", { name: "Choose pack folder", exact: true }),
+    ).toBeFocused();
+    await packs
+      .getByRole("button", { name: "Use version 1", exact: true })
+      .click();
+    await expect(
+      packs.getByRole("button", { name: "Confirm pack change", exact: true }),
+    ).toBeDisabled();
+    await packs
+      .getByRole("button", { name: "Cancel pack change", exact: true })
+      .click();
+    async function confirmPackAction(label) {
+      await packs.getByRole("button", { name: label, exact: true }).click();
+      await packs
+        .getByRole("checkbox", { name: "Confirm this pack change." })
+        .check();
+      await packs
+        .getByRole("button", { name: "Confirm pack change", exact: true })
+        .click();
+    }
+    await confirmPackAction("Use version 1");
+    await expect(
+      packs.getByRole("button", { name: "Deactivate version 1", exact: true }),
+    ).toBeVisible();
+    await page.reload();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(
+      packs.getByRole("button", { name: "Deactivate version 1", exact: true }),
+    ).toBeVisible();
+    await confirmPackAction("Deactivate version 1");
+    await confirmPackAction("Remove version 1");
+    await expect(
+      packs
+        .getByRole("listitem")
+        .getByText("Version 1 · Payloads removed", { exact: false }),
+    ).toBeVisible();
+    await packs
+      .getByRole("button", { name: "Choose pack folder", exact: true })
+      .click();
+    await packs
+      .getByRole("checkbox", { name: /I want to install this pack/ })
       .check();
     await packs
-      .getByRole("button", { name: "Confirm pack change", exact: true })
+      .getByRole("button", { name: "Install pack", exact: true })
       .click();
+    await confirmPackAction("Use version 1");
+    await page
+      .getByRole("button", { name: "Export backup", exact: true })
+      .click();
+    await expect(
+      page.getByText("Backup saved to", { exact: false }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Choose backup to restore", exact: true })
+      .click();
+    await expect(
+      page.getByText("Referenced pack versions: 1.", { exact: false }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Cancel restore", exact: true })
+      .click();
+    await page.screenshot({
+      path: "test-results/offline-packs.png",
+      fullPage: true,
+    });
+    assert.deepEqual(errors, []);
+    console.log(
+      "PASS real pack preview/confirmation/cancel, activation after reload, deactivation/removal/repair and typed backup references (test folder-selection adapter)",
+    );
   }
-  await confirmPackAction("Use version 1");
-  await expect(
-    packs.getByRole("button", { name: "Deactivate version 1", exact: true }),
-  ).toBeVisible();
-  await page.reload();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(
-    packs.getByRole("button", { name: "Deactivate version 1", exact: true }),
-  ).toBeVisible();
-  await confirmPackAction("Deactivate version 1");
-  await confirmPackAction("Remove version 1");
-  await expect(
-    packs
-      .getByRole("listitem")
-      .getByText("Version 1 · Payloads removed", { exact: false }),
-  ).toBeVisible();
-  await packs
-    .getByRole("button", { name: "Choose pack folder", exact: true })
-    .click();
-  await packs
-    .getByRole("checkbox", { name: /I want to install this pack/ })
-    .check();
-  await packs
-    .getByRole("button", { name: "Install pack", exact: true })
-    .click();
-  await confirmPackAction("Use version 1");
-  await page
-    .getByRole("button", { name: "Export backup", exact: true })
-    .click();
-  await expect(
-    page.getByText("Backup saved to", { exact: false }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Choose backup to restore", exact: true })
-    .click();
-  await expect(
-    page.getByText("Referenced pack versions: 1.", { exact: false }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Cancel restore", exact: true })
-    .click();
-  await page.screenshot({
-    path: "test-results/offline-packs.png",
-    fullPage: true,
-  });
   assert.deepEqual(errors, []);
-  console.log(
-    "PASS real pack preview/confirmation/cancel, activation after reload, deactivation/removal/repair and typed backup references (test folder-selection adapter)",
-  );
+  assert.deepEqual(externalRequests, []);
   await context.close();
 } finally {
   if (browser) await browser.close();

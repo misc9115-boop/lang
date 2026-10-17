@@ -8,7 +8,7 @@ const driver = spawn(
     "target/debug/examples",
     process.platform === "win32" ? "ui_driver.exe" : "ui_driver",
   ),
-  [],
+  process.argv.includes("--review") ? ["--synthetic-review"] : [],
   { stdio: "inherit", windowsHide: true },
 );
 const server = await createServer({ plugins: [coreTestTransport] });

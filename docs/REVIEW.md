@@ -1,10 +1,12 @@
 # Offline review scheduling
 
-This implements scheduling and initial history persistence for SPEC.md section 7 /
-R-04. It is not yet the complete learner review feature: the desktop does not show
-review sessions or award review XP. Schema/backup version 2 persists observations
-seeded while advancing independently reviewed lesson exercises; legacy profiles
-upgrade only after a [validated recovery archive](BACKUPS.md#schema-1-to-2-migration).
+This implements local FSRS scheduling, lesson-seeded histories and saved review
+sessions for SPEC.md section 7 / R-04. The desktop Review screen previews item
+counts, resumes saved interactions and awards completion credit. Schema/backup
+version 3 adds sessions and the review credit ledger; existing profiles upgrade
+only after a [validated recovery archive](BACKUPS.md#schema-1-or-2-to-3-migration).
+No independently reviewed content is bundled. Synthetic authority used in tests
+is confined to disposable fixtures and is not a course approval.
 
 ## Engine choice
 
@@ -39,8 +41,9 @@ MPL-2.0 and retain its text and source link in [dependency notices](../licenses/
 
 First-attempt correctness remains in the observation after a correction. An Easy
 action cannot override a failed, revealed or assisted result. Contradictory
-evidence is rejected. Typing speed is not an input. Future UI must derive evidence
-from stored interactions, not trust a renderer-supplied rating.
+evidence is rejected. Typing speed is not an input. The session engine derives evidence
+from stored interactions; the renderer can request explicit Easy but cannot
+supply correctness, another rating or an FSRS history.
 
 Desired retention is fixed at **0.9**. This is an algorithm input, not a guarantee
 of learning or CEFR proficiency. The schedule identifies both the engine/defaults
@@ -52,8 +55,8 @@ change requires a new identifier and explicit migration.
 `ReviewKey` contains curriculum ID, target kind, target ID and tested skill.
 Vocabulary senses, grammar targets and objectives remain distinct; reading,
 writing, listening and speaking states cannot be combined. Pack version is not
-part of identity. The future content adapter must resolve exact exercise mappings
-against currently installed, independently reviewed content. This kernel does
+part of identity. The content adapter resolves exact exercise mappings
+against currently installed, independently reviewed content. The kernel does
 not establish that an item exists, grant editorial trust or invent targets.
 
 `ReviewHistory` stores observations, not imported stability/difficulty. Before use,
@@ -81,7 +84,7 @@ nothing is due. Duplicate keys fail, and each selection input is bounded at
 10,000 candidates; this is a batch limit, not a full-course inventory limit.
 The host must supply eligible reviewed candidates and manage larger queries.
 
-## Integration still required
+## Content integration
 
 Current persistence binds each observation to an exact reviewed pack reference,
 canonical lesson digest, exercise ID and objective/tested-skill key. The host
@@ -106,11 +109,45 @@ exercise level, so those keys can be seeded. Vocabulary/grammar target lists are
 only lesson-level: do not infer which exercise tests each target. Those mappings
 must be authored/versioned before target-specific review can be enabled.
 
-Review completion, correction flow, explicit Easy, resume/cancel, one 5-XP award
-per study day, goal/streak/first-review achievement rules and backup restore all
-still need transactional session storage, backup support and native/UI tests. Do not infer review completion
-from scheduling an item, turn practice fixtures into reviewed content, or expose
-an operational Review screen before these pieces are implemented.
+## Saved sessions and completion
+
+The host selects up to 10 distinct introduced objective/skill keys, preferring
+oldest due items. This is an implementation batch size, not a course completion
+rule. Explicit practice includes future-due items. Unintroduced, inactive,
+unavailable or untrusted content cannot be selected. Historical sources remain
+required for validating retained observations. Vocabulary/grammar exercise
+mappings still require authoring and a versioned content contract.
+
+Review sessions have their own table and exact source/lesson snapshots; they do
+not fabricate mixed-content lessons. Each item retains its draft, ordered graded
+attempts, hint use and final observation. Session item UUIDs distinguish repeated
+exercise content testing different skills. A wrong answer requires correction or
+explicit solution review. First-attempt evidence survives retries. Resolved items
+cannot be edited, assisted answers cannot claim Easy, and only an explicit Easy
+checkbox changes an independent Good result. Typing time is never used.
+
+Continue writes one FSRS observation per key/session and advances atomically;
+repeated or stale Continue requests cannot skip items. Save & exit retains the
+session. End review marks it aborted, awards no XP and retains ratings already
+committed for earlier items. Ending remains possible if content becomes
+unavailable; using/exporting that content still requires repair. One lesson or
+review can be active at a time. Attempts are bounded at 10,000 per item and saved
+session JSON at 8 MiB; backup record/byte limits apply without truncation.
+
+Finishing all items commits the final rating, session completion, study day,
+5-XP credit and achievements together. A unique review credit per saved local
+calendar date caps review XP at once per day; further sessions still complete.
+Lesson and review credits both count toward goals, streaks and 100 XP. First
+review is a separate achievement. Changing the IANA study zone does not rewrite
+past dates, and goal edits change only the current/future day. A failed award or
+FSRS write rolls the complete transaction back. Aborted/opened sessions never
+qualify a study day. Completion/XP are not a mastery or CEFR assessment.
+
+Version-3 archives contain sessions, attempts, drafts and credit. Validation
+regrades saved answers, checks exact host content authority, chronology, position,
+unique keys/requests, rating evidence, both directions of the session/history
+link, credit caps and achievements in an isolated candidate. Legacy restores
+replace these new collections with empty ones, after verified version-3 recovery.
 
 ## Validation
 
@@ -120,3 +157,12 @@ session deduplication, separate tested skills, malformed evidence/IDs/versions,
 input limits, clock/calendar failures, UTC offsets, due ordering and practice with
 no due items. Existing learner/backup/content tests continue to run. CI exercises
 the shared core on Windows and macOS; results are recorded with the pull request.
+
+Session tests cover wrong/hinted/revealed/independent/Easy results, exact/changed
+request retries, due-only versus explicit practice, SQLite reopen and backup
+resume, abort, award rollback, daily credit caps, streak/achievement evidence and
+checksummed forged session/history/credit data. The browser suite has a separate
+`--review` mode using an explicitly synthetic pack in disposable storage; it
+checks correction, resume, typed drafts, Easy, repeated completion/abort and
+validated export. Production content trust is unchanged. Native startup continues
+to test a real schema-1 upgrade, recovery selection and process restart in CI.

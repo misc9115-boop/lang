@@ -332,14 +332,42 @@ with document width 705px and no horizontal overflow. Native upgrade/restart and
 platform CI results are recorded on the pull request; native file dialogs and
 resource/minimum-platform gates remain unverified.
 
+## Saved review sessions (2026-10-17)
+
+The Review screen now selects introduced objective/skill items from active,
+verified content, prefers due items and allows explicit practice. Separate saved
+sessions preserve drafts, attempts, hints, corrections and explicit Easy. Continue
+commits a single observation and the next position; completion also atomically
+commits the study day, at-most-once daily 5-XP credit and achievements. Save/exit
+resumes; ending an unfinished session earns no XP and retains already committed
+ratings. Lesson/review exclusivity and pack-source retention are enforced.
+
+Schema/backup 3 includes sessions and the review credit ledger. Upgrades from
+1 or 2 retain an exact, validated original-version recovery before transactional
+DDL. Legacy restores replace new records with empty sets after v3 recovery.
+Validation regrades saved answers and cross-checks session/history links, exact
+content sources, clocks, positions, IDs, credits and achievements.
+
+Local Windows validation: 120 core tests and 1 desktop test passed, plus workspace
+Clippy and a frontend build with zero Svelte errors/warnings. Connected-browser
+checks used the actual Rust/SQLite core with an explicitly synthetic pack in
+disposable storage: wrong answer/hint after reload, typed draft resume, Easy
+eligibility, first completion 5 XP, repeated completion 0 XP, abort and validated
+backup preview all worked. The 720px Review page measured 705px document width.
+The standalone browser runner and native app cannot be launched reliably in this
+restricted local host; CI results for both browser modes, migration/restart and
+release checks are recorded on the PR. Native dialogs, resource budgets and
+minimum-platform coverage remain release work. No actual editorial approval,
+course content or production trust registry has been added.
+
 ## Next implementation work
 
 1. Verify native file dialogs manually; extend failure/crash coverage and minimum
    OS/architecture checks beyond the baseline CI hosts.
 2. Extend packs to download/media/alternatives and
    author the complete objective map and lessons with real review.
-3. Implement learner review sessions/credit and precise vocabulary/grammar
-   mappings, full exercises/media and accessible alternatives, and
+3. Author precise vocabulary/grammar exercise mappings; implement full
+   exercises/media and accessible alternatives, and
    resource-controlled pack management.
 4. Implement independent leaderboard and text/voice conversation adapters, with
    privacy, cancellation, credential/outbox and real-service tests.

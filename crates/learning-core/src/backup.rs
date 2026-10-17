@@ -78,6 +78,10 @@ struct LearnerData {
     installed_pack_references: Vec<PackReference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     review_records: Option<Vec<crate::review_storage::StoredReview>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    review_sessions: Option<Vec<crate::review_session::SavedReviewSession>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    review_xp: Option<Vec<crate::review_session::ReviewCredit>>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -161,6 +165,8 @@ pub struct BackupPreview {
     pub fingerprint: String,
     pub pack_references: Vec<PackReference>,
     pub review_item_count: usize,
+    pub review_session_count: usize,
+    pub active_review: bool,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -244,9 +250,10 @@ impl Store {
         now: DateTime<Utc>,
         after_schema: impl FnOnce(&Connection) -> Result<()>,
     ) -> Result<Option<PathBuf>> {
-        match self.schema_version()? {
-            2 => return Ok(None),
-            1 => {}
+        let version = self.schema_version()?;
+        match version {
+            3 => return Ok(None),
+            1 | 2 => {}
             _ => {
                 return Err(
                     "Unsupported learner schema; migration did not change your data.".into(),
@@ -257,11 +264,11 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(error)?;
-        if crate::review_storage::schema_version(&tx)? != 1 {
+        if crate::review_storage::schema_version(&tx)? != version {
             return Err("Learner schema changed before migration. Reopen the profile.".into());
         }
         let data = read_data(&tx, &self.content.references)?;
-        let bytes = archive_bytes(data, self.development_build, now, 1)?;
+        let bytes = archive_bytes(data, self.development_build, now, version)?;
         let archive = parse_archive(&bytes, self.development_build)?;
         validate_data(
             &archive.body.data,
@@ -272,7 +279,7 @@ impl Store {
         )?;
         fs::create_dir_all(directory).map_err(error)?;
         let path = directory.join(format!(
-            "pre-migrate-v1-to-v2-{}-{}.langbackup",
+            "pre-migrate-v{version}-to-v3-{}-{}.langbackup",
             now.format("%Y%m%dT%H%M%SZ"),
             Uuid::new_v4()
         ));
@@ -292,7 +299,11 @@ impl Store {
             now,
         )?;
         // Both table creation and user_version roll back together on failure/crash.
-        tx.execute_batch(include_str!("review_schema.sql"))
+        if version == 1 {
+            tx.execute_batch(include_str!("review_schema.sql"))
+                .map_err(error)?;
+        }
+        tx.execute_batch(include_str!("review_session_schema.sql"))
             .map_err(error)?;
         after_schema(&tx)?;
         tx.commit().map_err(error)?;
@@ -336,6 +347,18 @@ impl Store {
             development: archive.body.development,
             fingerprint: archive.sha256,
             pack_references: archive.body.data.installed_pack_references,
+            review_session_count: archive
+                .body
+                .data
+                .review_sessions
+                .as_ref()
+                .map_or(0, Vec::len),
+            active_review: archive
+                .body
+                .data
+                .review_sessions
+                .as_ref()
+                .is_some_and(|ss| ss.iter().any(|s| s.status == "active")),
             review_item_count: archive
                 .body
                 .data
@@ -352,7 +375,7 @@ impl Store {
         recovery_directory: &Path,
         now: DateTime<Utc>,
     ) -> Result<RestoreResult> {
-        if self.schema_version()? != 2 {
+        if self.schema_version()? != 3 {
             return Err("Upgrade the learner database before restoring a backup.".into());
         }
         // This candidate never touches the live database, even for a valid checksum.
@@ -378,7 +401,7 @@ impl Store {
         }
         // Hold the write lock so the verified recovery snapshot is the exact state
         // being replaced, including changes from another app process.
-        let recovery = archive_bytes(current, self.development_build, now, 2)?;
+        let recovery = archive_bytes(current, self.development_build, now, 3)?;
         let checked = parse_archive(&recovery, self.development_build)?;
         validate_data(
             &checked.body.data,
@@ -403,7 +426,7 @@ impl Store {
             );
         }
         // Only hard-coded, parameterized statements ever reach the live DB.
-        tx.execute_batch("DELETE FROM review_histories; DELETE FROM answer_reports; DELETE FROM attempts; DELETE FROM session_items; DELETE FROM xp_ledger; DELETE FROM sessions; DELETE FROM achievements; DELETE FROM study_days; DELETE FROM profile;").map_err(error)?;
+        tx.execute_batch("DELETE FROM review_xp; DELETE FROM review_sessions; DELETE FROM review_histories; DELETE FROM answer_reports; DELETE FROM attempts; DELETE FROM session_items; DELETE FROM xp_ledger; DELETE FROM sessions; DELETE FROM achievements; DELETE FROM study_days; DELETE FROM profile;").map_err(error)?;
         insert_data(&tx, &archive.body.data)?;
         tx.commit().map_err(error)?;
         Ok(RestoreResult {
@@ -477,10 +500,12 @@ fn parse_archive(bytes: &[u8], development: bool) -> Result<Archive> {
     if archive.body.format != "lang-learner-backup"
         || !matches!(
             (archive.body.version, archive.body.schema_version),
-            (1, 1) | (2, 2)
+            (1, 1) | (2, 2) | (3, 3)
         )
         || (archive.body.version == 1 && archive.body.data.review_records.is_some())
-        || (archive.body.version == 2 && archive.body.data.review_records.is_none())
+        || (archive.body.version >= 2 && archive.body.data.review_records.is_none())
+        || (archive.body.version == 3) != archive.body.data.review_sessions.is_some()
+        || (archive.body.version == 3) != archive.body.data.review_xp.is_some()
     {
         return Err(
             "This backup's format or schema version is not supported. No data was changed.".into(),
@@ -497,7 +522,7 @@ fn parse_archive(bytes: &[u8], development: bool) -> Result<Archive> {
 
 fn read_data(connection: &Connection, references: &[PackReference]) -> Result<LearnerData> {
     let version = crate::review_storage::schema_version(connection)?;
-    let (review_rows, review_bytes): (i64, i64) = if version == 2 {
+    let (review_rows, review_bytes): (i64, i64) = if version >= 2 {
         connection.query_row("SELECT COUNT(*), COALESCE(SUM(length(CAST(record AS BLOB))),0) FROM review_histories", [], |r| Ok((r.get(0)?,r.get(1)?))).map_err(error)?
     } else {
         (0, 0)
@@ -512,8 +537,18 @@ fn read_data(connection: &Connection, references: &[PackReference]) -> Result<Le
                 .into(),
         );
     }
-    let review_records = if version == 2 {
+    let review_records = if version >= 2 {
         Some(crate::review_storage::read_all(connection)?)
+    } else {
+        None
+    };
+    let review_sessions = if version >= 3 {
+        Some(crate::review_session::read_all(connection)?)
+    } else {
+        None
+    };
+    let review_xp = if version >= 3 {
+        Some(crate::review_session::credits(connection)?)
     } else {
         None
     };
@@ -706,6 +741,8 @@ fn read_data(connection: &Connection, references: &[PackReference]) -> Result<Le
         reports,
         installed_pack_references: references.to_vec(),
         review_records,
+        review_sessions,
+        review_xp,
     })
 }
 
@@ -752,6 +789,21 @@ fn insert_data(connection: &Connection, data: &LearnerData) -> Result<()> {
     for record in data.review_records.as_deref().unwrap_or_default() {
         crate::review_storage::insert_record(connection, record)?;
     }
+    for session in data.review_sessions.as_deref().unwrap_or_default() {
+        crate::review_session::save(connection, session)?;
+    }
+    for credit in data.review_xp.as_deref().unwrap_or_default() {
+        connection
+            .execute(
+                "INSERT INTO review_xp(study_date,session_id,amount) VALUES(?1,?2,?3)",
+                params![
+                    credit.study_date,
+                    credit.session_id.to_string(),
+                    credit.amount
+                ],
+            )
+            .map_err(error)?;
+    }
     Ok(())
 }
 
@@ -776,6 +828,15 @@ fn validate_data(
             .iter()
             .map(|r| 1 + 2 * r.history().observations().len())
             .sum::<usize>();
+    let count = count
+        + data
+            .review_sessions
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|s| 1 + s.items.iter().map(|i| 1 + i.attempts.len()).sum::<usize>())
+            .sum::<usize>()
+        + data.review_xp.as_ref().map_or(0, Vec::len);
     if count > MAX_RECORDS {
         return Err("The backup exceeds this version's 100,000 record limit.".into());
     }
@@ -940,6 +1001,48 @@ fn validate_data(
             return Err("Assessment evidence has no corresponding attempt.".into());
         }
     }
+    let mut saved_reviews = HashMap::new();
+    let mut all_requests: HashSet<Uuid> = data
+        .attempts
+        .iter()
+        .map(|a| Uuid::parse_str(&a.request_id).map_err(error))
+        .collect::<Result<_>>()?;
+    let mut expected_observations = HashSet::new();
+    let mut active_reviews = 0;
+    for s in data.review_sessions.as_deref().unwrap_or_default() {
+        s.validate(context, now)?;
+        if sessions.contains_key(s.id.to_string().as_str())
+            || saved_reviews.insert(s.id, s).is_some()
+        {
+            return Err("Duplicate lesson/review session identifier.".into());
+        }
+        if s.status == "active" {
+            active_reviews += 1;
+        }
+        for i in &s.items {
+            if !data.installed_pack_references.contains(&i.source.pack) {
+                return Err("Saved review pack reference is missing.".into());
+            }
+            for a in &i.attempts {
+                if !all_requests.insert(a.request_id) {
+                    return Err("Duplicate review answer identifier.".into());
+                }
+            }
+            if let Some(o) = &i.observation {
+                expected_observations.insert((s.id, i.source.key.clone(), o.request_id));
+            }
+        }
+    }
+    if active_reviews
+        + data
+            .sessions
+            .iter()
+            .filter(|s| s.status == "active")
+            .count()
+        > 1
+    {
+        return Err("Only one lesson or review can be active.".into());
+    }
     let mut days = HashSet::new();
     for d in &data.days {
         date(&d.date)?;
@@ -966,6 +1069,43 @@ fn validate_data(
             return Err("Invalid XP credit in backup.".into());
         }
         credit_days.insert(x.study_date.as_str());
+    }
+    let mut review_dates = HashSet::new();
+    let mut review_credited = HashSet::new();
+    for x in data.review_xp.as_deref().unwrap_or_default() {
+        date(&x.study_date)?;
+        let s = saved_reviews
+            .get(&x.session_id)
+            .ok_or("Orphan review credit.")?;
+        if x.amount != 5
+            || s.status != "completed"
+            || s.study_date.as_ref() != Some(&x.study_date)
+            || s.xp_earned != 5
+            || !days.contains(x.study_date.as_str())
+            || !review_dates.insert(x.study_date.as_str())
+            || !review_credited.insert(x.session_id)
+        {
+            return Err("Invalid review credit in backup.".into());
+        }
+        credit_days.insert(x.study_date.as_str());
+    }
+    for s in saved_reviews.values() {
+        if s.xp_earned
+            != if review_credited.contains(&s.id) {
+                5
+            } else {
+                0
+            }
+        {
+            return Err("Review XP differs from its ledger.".into());
+        }
+        if let Some(d) = &s.study_date {
+            date(d)?;
+            if !review_dates.contains(d.as_str()) {
+                return Err("Completed review date has no qualifying daily credit.".into());
+            }
+            credit_days.insert(d.as_str());
+        }
     }
     if days != credit_days {
         return Err("Study days and qualifying credit do not agree.".into());
@@ -995,6 +1135,24 @@ fn validate_data(
         }
         for (observation, source) in record.history().observations().iter().zip(record.sources()) {
             let id = observation.session_id.to_string();
+            if let Some(session) = saved_reviews.get(&observation.session_id) {
+                let item = session
+                    .items
+                    .iter()
+                    .find(|i| {
+                        i.source == *source
+                            && i.observation.as_ref().is_some_and(|o| o == observation)
+                    })
+                    .ok_or("Review observation does not match its saved review interaction.")?;
+                if !expected_observations.remove(&(
+                    session.id,
+                    item.source.key.clone(),
+                    observation.request_id,
+                )) {
+                    return Err("Repeated review observation.".into());
+                }
+                continue;
+            }
             let session = sessions
                 .get(id.as_str())
                 .ok_or("Review observation has no saved session.")?;
@@ -1039,8 +1197,11 @@ fn validate_data(
             }
         }
     }
+    if !expected_observations.is_empty() {
+        return Err("Saved review rating is absent from its FSRS history.".into());
+    }
     for g in &data.achievements {
-        if !["first_lesson", "100_xp", "7_day_streak"].contains(&g.id.as_str()) {
+        if !["first_lesson", "first_review", "100_xp", "7_day_streak"].contains(&g.id.as_str()) {
             return Err("This archive contains an unsupported achievement.".into());
         }
     }
@@ -1053,6 +1214,10 @@ fn validate_data(
     let progress = candidate.progress(now)?;
     for (id, earned) in [
         ("first_lesson", progress.completed_lessons > 0),
+        (
+            "first_review",
+            saved_reviews.values().any(|s| s.status == "completed"),
+        ),
         ("100_xp", progress.total_xp >= 100),
         ("7_day_streak", progress.best_streak >= 7),
     ] {

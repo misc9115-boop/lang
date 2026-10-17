@@ -182,7 +182,7 @@ try {
   await start();
   await textIncludes("A place to begin your Italian.");
   const migrationCopies = (await invoke("list_recovery_backups")).filter(
-    (entry) => entry.id.startsWith("pre-migrate-v1-to-v2-"),
+    (entry) => entry.id.startsWith("pre-migrate-v1-to-v3-"),
   );
   assert.equal(migrationCopies.length, 1);
   const migration = JSON.parse(
@@ -247,9 +247,11 @@ try {
     readFileSync(path.join(root, "backups", created.id), "utf8"),
   );
   assert.equal(recovery.body.data.installedPackReferences.length, 1);
-  assert.equal(recovery.body.version, 2);
-  assert.equal(recovery.body.schemaVersion, 2);
+  assert.equal(recovery.body.version, 3);
+  assert.equal(recovery.body.schemaVersion, 3);
   assert.deepEqual(recovery.body.data.reviewRecords, []);
+  assert.deepEqual(recovery.body.data.reviewSessions, []);
+  assert.deepEqual(recovery.body.data.reviewXp, []);
   assert.equal(recovery.body.data.settings.level, "C2");
   assert.equal(recovery.body.data.sessions.length, 0);
   console.log(
@@ -306,7 +308,7 @@ try {
   assert.equal(after.progress.totalXp, 0);
   assert.equal(
     (await invoke("list_recovery_backups")).filter((entry) =>
-      entry.id.startsWith("pre-migrate-v1-to-v2-"),
+      entry.id.startsWith("pre-migrate-v1-to-v3-"),
     ).length,
     1,
   );

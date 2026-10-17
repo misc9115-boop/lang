@@ -253,8 +253,8 @@ fn future_versions_modes_and_missing_pack_references_are_rejected() {
     let bytes = source().export_backup(now()).unwrap();
     let target = store(false);
     for bad in [
-        modified(&bytes, |a| a.body.version = 3),
-        modified(&bytes, |a| a.body.schema_version = 3),
+        modified(&bytes, |a| a.body.version = 99),
+        modified(&bytes, |a| a.body.schema_version = 99),
         modified(&bytes, |a| a.body.development = false),
         modified(&bytes, |a| {
             a.body.data.installed_pack_references.push(PackReference {
@@ -520,6 +520,8 @@ fn legacy_restore_replaces_reviews_and_v2_recovery_can_restore_them_back() {
         archive.body.version = 1;
         archive.body.schema_version = 1;
         archive.body.data.review_records = None;
+        archive.body.data.review_sessions = None;
+        archive.body.data.review_xp = None;
     });
     assert_eq!(
         store
@@ -535,7 +537,7 @@ fn legacy_restore_replaces_reviews_and_v2_recovery_can_restore_them_back() {
         .unwrap();
     assert!(store.review_histories().unwrap().is_empty());
     let recovery = read_backup_file(&result.recovery_path).unwrap();
-    assert_eq!(parse_archive(&recovery, true).unwrap().body.version, 2);
+    assert_eq!(parse_archive(&recovery, true).unwrap().body.version, 3);
     assert_eq!(
         store
             .inspect_backup(&recovery, now())
@@ -604,4 +606,356 @@ fn changing_review_history_invalidates_an_existing_restore_preview() {
         .unwrap_err()
         .contains("changed after"));
     assert!(store.review_histories().unwrap().is_empty());
+}
+
+fn review_ready() -> Store {
+    let mut s = reviewed_history_source();
+    loop {
+        let Some(active) = s.state(now()).unwrap().active_session else {
+            break;
+        };
+        let e = active.exercise.unwrap();
+        s.reveal(&active.id, &e.id, now()).unwrap();
+        s.advance(&active.id, &e.id, now()).unwrap();
+    }
+    s
+}
+fn finish_review(
+    s: &mut Store,
+    at: DateTime<Utc>,
+    easy: bool,
+) -> crate::review_session::ReviewSessionView {
+    let r = s.start_review(true, at).unwrap();
+    let item = r.exercise.unwrap().id;
+    s.review_submit(
+        &r.id,
+        &item,
+        Answer::Option("a".into()),
+        &Uuid::new_v4().to_string(),
+        at,
+    )
+    .unwrap();
+    s.advance_review(&r.id, &item, easy, at).unwrap()
+}
+#[test]
+fn review_completion_daily_credit_practice_and_streak_are_idempotent() {
+    use crate::review::Rating;
+    let mut s = review_ready();
+    assert_eq!(s.review_overview(now()).unwrap().due_count, 0);
+    assert_eq!(s.review_overview(now()).unwrap().available_count, 1);
+    assert!(s.start_review(false, now()).is_err());
+    let r = finish_review(&mut s, now(), true);
+    assert_eq!(r.status, "completed");
+    assert_eq!(r.xp_earned, 5);
+    assert_eq!(s.progress(now()).unwrap().total_xp, 15);
+    assert!(s
+        .progress(now())
+        .unwrap()
+        .achievements
+        .contains(&"first_review".into()));
+    assert_eq!(
+        s.review_histories().unwrap()[0]
+            .schedule()
+            .unwrap()
+            .last_rating,
+        Rating::Easy
+    );
+    assert_eq!(
+        s.advance_review(&r.id, "old-item", false, now())
+            .unwrap()
+            .xp_earned,
+        5
+    );
+    assert_eq!(finish_review(&mut s, now(), false).xp_earned, 0);
+    assert_eq!(s.progress(now()).unwrap().total_xp, 15);
+    for day in 1..7 {
+        let at = now() + chrono::Duration::days(day);
+        assert_eq!(finish_review(&mut s, at, false).xp_earned, 5);
+    }
+    let at = now() + chrono::Duration::days(6);
+    assert_eq!(s.progress(at).unwrap().current_streak, 7);
+    assert!(s
+        .progress(at)
+        .unwrap()
+        .achievements
+        .contains(&"7_day_streak".into()));
+    assert!(s.export_backup(at).is_ok());
+}
+#[test]
+fn review_correction_hints_reveal_and_explicit_easy_preserve_first_evidence() {
+    use crate::review::Rating;
+    for mode in ["correction", "hint", "reveal"] {
+        let mut s = review_ready();
+        let r = s.start_review(true, now()).unwrap();
+        let item = r.exercise.unwrap().id;
+        assert!(s.advance_review(&r.id, &item, false, now()).is_err());
+        if mode == "reveal" {
+            s.review_reveal(&r.id, &item, now()).unwrap();
+        } else {
+            if mode == "hint" {
+                s.review_hint(&r.id, &item, now()).unwrap();
+            } else {
+                s.review_submit(
+                    &r.id,
+                    &item,
+                    Answer::Option("b".into()),
+                    &Uuid::new_v4().to_string(),
+                    now(),
+                )
+                .unwrap();
+            }
+            let request = Uuid::new_v4().to_string();
+            s.review_submit(&r.id, &item, Answer::Option("a".into()), &request, now())
+                .unwrap();
+            s.review_submit(&r.id, &item, Answer::Option("a".into()), &request, now())
+                .unwrap();
+            assert!(s
+                .review_submit(&r.id, &item, Answer::Option("b".into()), &request, now())
+                .is_err());
+        }
+        assert!(!s.review_session(&r.id).unwrap().can_rate_easy);
+        let before = s.backup_fingerprint().unwrap();
+        assert!(s.advance_review(&r.id, &item, true, now()).is_err());
+        assert_eq!(before, s.backup_fingerprint().unwrap());
+        s.advance_review(&r.id, &item, false, now()).unwrap();
+        let records = s.review_histories().unwrap();
+        assert_eq!(
+            records[0].schedule().unwrap().last_rating,
+            if mode == "reveal" {
+                Rating::Again
+            } else {
+                Rating::Hard
+            }
+        );
+        assert!(s.export_backup(now()).is_ok());
+    }
+}
+#[test]
+fn review_resume_from_sqlite_and_backup_keeps_drafts_hints_and_wrong_attempts() {
+    let source = review_ready();
+    let content = source.content.clone();
+    let lessons = source.lessons.clone();
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("review.sqlite3");
+    let mut s = Store::open(&path, lessons.clone(), true).unwrap();
+    s.content = content.clone();
+    let fp = s.backup_fingerprint().unwrap();
+    s.restore_backup(
+        &source.export_backup(now()).unwrap(),
+        &fp,
+        &root.path().join("recovery"),
+        now(),
+    )
+    .unwrap();
+    let r = s.start_review(true, now()).unwrap();
+    let item = r.exercise.unwrap().id;
+    s.review_submit(
+        &r.id,
+        &item,
+        Answer::Option("b".into()),
+        &Uuid::new_v4().to_string(),
+        now(),
+    )
+    .unwrap();
+    s.review_hint(&r.id, &item, now()).unwrap();
+    s.review_draft(&r.id, &item, Answer::Option("a".into()), now())
+        .unwrap();
+    let bytes = s.export_backup(now()).unwrap();
+    drop(s);
+    let mut s = Store::open(&path, lessons, true).unwrap();
+    s.content = content;
+    let resumed = s.state(now()).unwrap().active_review.unwrap();
+    assert_eq!(resumed.id, r.id);
+    let e = resumed.exercise.unwrap();
+    assert_eq!(e.draft, Some(Answer::Option("a".into())));
+    assert!(e.hint.is_some());
+    assert!(!e.feedback.unwrap().correct);
+    assert_eq!(s.export_backup(now()).unwrap(), bytes);
+    let fp = s.backup_fingerprint().unwrap();
+    s.abort_review(&r.id, now()).unwrap();
+    assert!(s.state(now()).unwrap().active_review.is_none());
+    let fp_after = s.backup_fingerprint().unwrap();
+    assert_ne!(fp, fp_after);
+    s.restore_backup(&bytes, &fp_after, &root.path().join("recovery"), now())
+        .unwrap();
+    assert_eq!(s.state(now()).unwrap().active_review.unwrap().id, r.id);
+}
+#[test]
+fn unfinished_reviews_award_nothing_and_block_parallel_lessons() {
+    let mut s = review_ready();
+    let r = s.start_review(true, now()).unwrap();
+    let item = r.exercise.unwrap().id;
+    assert_eq!(s.start_review(true, now()).unwrap().id, r.id);
+    assert!(s.start("dev.a1.cafe", now()).is_err());
+    s.review_reveal(&r.id, &item, now()).unwrap();
+    s.abort_review(&r.id, now()).unwrap();
+    assert_eq!(s.progress(now()).unwrap().total_xp, 10);
+    assert!(!s
+        .progress(now())
+        .unwrap()
+        .achievements
+        .contains(&"first_review".into()));
+    assert_eq!(
+        s.review_histories().unwrap()[0]
+            .history()
+            .observations()
+            .len(),
+        1
+    );
+    assert!(s.export_backup(now()).is_ok());
+    let lesson = s.start("dev.a1.cafe", now()).unwrap();
+    assert!(s.start_review(true, now()).is_err());
+    assert_eq!(
+        s.state(now()).unwrap().active_session.unwrap().id,
+        lesson.id
+    );
+}
+#[test]
+fn review_award_failure_rolls_back_rating_completion_and_progress() {
+    let mut s = review_ready();
+    let r = s.start_review(true, now()).unwrap();
+    let item = r.exercise.unwrap().id;
+    s.review_reveal(&r.id, &item, now()).unwrap();
+    let before = s.export_backup(now()).unwrap();
+    s.connection.execute_batch("CREATE TRIGGER fail_review BEFORE INSERT ON review_xp BEGIN SELECT RAISE(ABORT,'injected'); END;").unwrap();
+    assert!(s.advance_review(&r.id, &item, false, now()).is_err());
+    assert_eq!(before, s.export_backup(now()).unwrap());
+    s.connection
+        .execute_batch("DROP TRIGGER fail_review")
+        .unwrap();
+    assert_eq!(
+        s.advance_review(&r.id, &item, false, now())
+            .unwrap()
+            .xp_earned,
+        5
+    );
+}
+#[test]
+fn checksummed_review_session_forgery_is_rejected_before_live_restore() {
+    let mut s = review_ready();
+    finish_review(&mut s, now(), true);
+    let bytes = s.export_backup(now()).unwrap();
+    for field in [
+        "answer",
+        "correct",
+        "time",
+        "source",
+        "position",
+        "rating",
+        "credit",
+        "missing-history",
+        "missing-session",
+        "duplicate-request",
+    ] {
+        let forged = modified(&bytes, |a| {
+            let session = &mut a.body.data.review_sessions.as_mut().unwrap()[0];
+            match field {
+                "answer" => session.items[0].attempts[0].answer = Some(Answer::Option("b".into())),
+                "correct" => session.items[0].attempts[0].correct = false,
+                "time" => session.items[0].attempts[0].at = now() + chrono::Duration::days(1),
+                "source" => session.items[0].source.lesson_sha256 = "b".repeat(64),
+                "position" => session.position = 0,
+                "rating" => session.items[0].observation.as_mut().unwrap().explicit_easy = false,
+                "credit" => a.body.data.review_xp.as_mut().unwrap()[0].amount = 10,
+                "missing-history" => a.body.data.review_records = Some(vec![]),
+                "missing-session" => a.body.data.review_sessions = Some(vec![]),
+                "duplicate-request" => {
+                    session.items[0].attempts[0].request_id =
+                        Uuid::parse_str(&a.body.data.attempts[0].request_id).unwrap()
+                }
+                _ => unreachable!(),
+            }
+        });
+        let fp = s.backup_fingerprint().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        assert!(
+            s.restore_backup(&forged, &fp, root.path(), now()).is_err(),
+            "accepted {field}"
+        );
+        assert_eq!(fp, s.backup_fingerprint().unwrap());
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 0);
+    }
+}
+#[test]
+fn v2_restore_clears_review_sessions_and_v3_recovery_can_restore_them() {
+    let mut s = review_ready();
+    let base = s.export_backup(now()).unwrap();
+    let v2 = modified(&base, |a| {
+        a.body.version = 2;
+        a.body.schema_version = 2;
+        a.body.data.review_sessions = None;
+        a.body.data.review_xp = None;
+    });
+    let r = s.start_review(true, now()).unwrap();
+    let item = r.exercise.unwrap().id;
+    s.review_hint(&r.id, &item, now()).unwrap();
+    let fp = s.backup_fingerprint().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let result = s.restore_backup(&v2, &fp, root.path(), now()).unwrap();
+    assert!(s.state(now()).unwrap().active_review.is_none());
+    let recovery = read_backup_file(&result.recovery_path).unwrap();
+    let preview = s.inspect_backup(&recovery, now()).unwrap();
+    assert_eq!(preview.review_session_count, 1);
+    assert!(preview.active_review);
+    let fp = s.backup_fingerprint().unwrap();
+    s.restore_backup(&recovery, &fp, root.path(), now())
+        .unwrap();
+    assert_eq!(s.state(now()).unwrap().active_review.unwrap().id, r.id);
+}
+
+#[test]
+fn review_credit_uses_saved_zone_and_goal_history_without_rewriting_old_days() {
+    let mut s = review_ready();
+    finish_review(&mut s, now(), false);
+    let mut changed = settings();
+    changed.time_zone = "Pacific/Kiritimati".into();
+    changed.daily_goal = 7;
+    s.save_settings(changed, now()).unwrap();
+    finish_review(&mut s, now(), false);
+    let p = s.progress(now()).unwrap();
+    assert_eq!(p.total_xp, 20);
+    assert_eq!(p.today_xp, 5);
+    assert_eq!(p.days[0].date, "2026-10-14");
+    assert_eq!(p.days[0].goal, 10);
+    assert_eq!(p.days[0].time_zone, "America/Chicago");
+    assert_eq!(p.days[1].date, "2026-10-15");
+    assert_eq!(p.days[1].goal, 7);
+    assert_eq!(p.days[1].time_zone, "Pacific/Kiritimati");
+    assert!(s.export_backup(now()).is_ok());
+}
+#[test]
+fn mixed_lesson_and_review_credits_grant_100_xp_once() {
+    let mut s = review_ready();
+    for day in 0..18 {
+        assert_eq!(
+            finish_review(&mut s, now() + chrono::Duration::days(day), false).xp_earned,
+            5
+        );
+    }
+    let at = now() + chrono::Duration::days(17);
+    let p = s.progress(at).unwrap();
+    assert_eq!(p.total_xp, 100);
+    assert_eq!(
+        p.achievements
+            .iter()
+            .filter(|id| id.as_str() == "100_xp")
+            .count(),
+        1
+    );
+    assert!(s.export_backup(at).is_ok());
+}
+#[test]
+fn real_v2_review_history_upgrades_with_identical_v2_recovery() {
+    let mut s = review_ready();
+    s.connection
+        .execute_batch("DROP TABLE review_xp; DROP TABLE review_sessions; PRAGMA user_version=2;")
+        .unwrap();
+    let before = s.export_backup(now()).unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let path = s.migrate_schema(root.path(), now()).unwrap().unwrap();
+    assert_eq!(read_backup_file(&path).unwrap(), before);
+    assert_eq!(s.schema_version().unwrap(), 3);
+    assert_eq!(s.review_histories().unwrap().len(), 1);
+    assert_eq!(s.review_overview(now()).unwrap().available_count, 1);
+    assert!(s.export_backup(now()).is_ok());
 }

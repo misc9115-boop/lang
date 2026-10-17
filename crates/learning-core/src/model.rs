@@ -159,6 +159,7 @@ pub struct AppState {
     pub settings: Option<Settings>,
     pub lessons: Vec<LessonSummary>,
     pub active_session: Option<SessionView>,
+    pub active_review: Option<crate::review_session::ReviewSessionView>,
     pub progress: Progress,
     pub development_build: bool,
     pub content_issues: Vec<String>,

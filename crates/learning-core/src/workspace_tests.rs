@@ -574,3 +574,22 @@ fn historical_reviewed_snapshot_can_restore_after_update_and_is_protected_from_r
     assert!(revoked.inspect_backup(&backup, now).is_err());
     assert!(!revoked.state(now).unwrap().content_issues.is_empty());
 }
+
+#[test]
+fn review_eligibility_tracks_active_content_and_saved_review_can_end_after_revocation() {
+    let (_source, _root, mut w) = reviewed_workspace(true);
+    let at = Utc::now();
+    let lesson = w.start("dev.a1.cafe", at).unwrap();
+    w.reveal(&lesson.id, "dev.cafe.choice", at).unwrap();
+    w.advance(&lesson.id, "dev.cafe.choice", at).unwrap();
+    assert_eq!(w.review_overview(at).unwrap().available_count, 1);
+    w.change_pack("deactivate", PACK, 1).unwrap();
+    assert_eq!(w.review_overview(at).unwrap().available_count, 0);
+    w.change_pack("activate", PACK, 1).unwrap();
+    let r = w.start_review(true, at).unwrap();
+    let item = r.exercise.unwrap().id;
+    w.content.review_sources.clear();
+    assert!(w.review_hint(&r.id, &item, at).is_err());
+    assert!(w.review_overview(at).unwrap().active.is_some());
+    assert_eq!(w.abort_review(&r.id, at).unwrap().xp_earned, 0);
+}
