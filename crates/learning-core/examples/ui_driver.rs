@@ -179,6 +179,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("Native seed needs an absolute, unused test directory".into());
         }
         fs::create_dir_all(root.join("backups"))?;
+        // Exercise an actual legacy upgrade at native startup. The two stores
+        // are isolated: an empty live v1 profile and a v1 recovery fixture.
+        for filename in ["development.sqlite3", "seed-source.db"] {
+            let legacy = rusqlite::Connection::open(root.join(filename))?;
+            legacy.execute_batch(include_str!("../src/schema.sql"))?;
+        }
         let mut source = Store::open(
             &root.join("seed-source.db"),
             vec![development_lesson()?],

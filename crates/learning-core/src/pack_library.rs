@@ -39,7 +39,7 @@ pub struct PackEntry {
     pub installed_at: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PackReference {
     pub pack_id: String,
@@ -52,6 +52,7 @@ pub(crate) struct ContentContext {
     pub managed: bool,
     pub references: Vec<PackReference>,
     pub reviewed_snapshots: HashSet<String>,
+    pub review_sources: HashSet<crate::review_storage::ReviewSource>,
 }
 
 pub struct PackLibrary {

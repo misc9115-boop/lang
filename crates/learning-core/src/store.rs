@@ -54,13 +54,14 @@ impl Store {
             .map_err(error)?;
         match version {
             0 => {
-                // Version 1 creates a fresh schema only. No existing learner data is
-                // transformed. Future migrations require a validated backup first.
+                // Fresh storage has no learner data to back up. Existing version-1
+                // stores require the explicit, verified recovery/migration path.
                 let tx = connection.transaction().map_err(error)?;
                 tx.execute_batch(include_str!("schema.sql")).map_err(error)?;
+                tx.execute_batch(include_str!("review_schema.sql")).map_err(error)?;
                 tx.commit().map_err(error)?;
             }
-            1 => {}
+            1 | 2 => {}
             _ => return Err(format!("Database schema {version} is newer than this application supports. Your data was not changed.")),
         }
         Ok(Self {
@@ -353,6 +354,16 @@ impl Store {
             .map_err(error)?;
         if !resolved {
             return Err("Correct the answer or review the solution before continuing.".into());
+        }
+        if !practice {
+            crate::review_storage::seed_lesson_reviews(
+                &tx,
+                &self.content,
+                &lesson,
+                id,
+                position,
+                now,
+            )?;
         }
         if position + 1 < lesson.exercises.len() {
             tx.execute("UPDATE sessions SET position=position+1 WHERE id=?1", [id])

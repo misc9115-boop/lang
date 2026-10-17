@@ -216,7 +216,11 @@ fn main() {
                     learning_core::pack_library::LibraryMode::ReviewedOnly
                 },
             );
-            app.manage(Database(Mutex::new(StudyWorkspace::new(store, library))));
+            let mut workspace = StudyWorkspace::new(store, library);
+            workspace
+                .migrate_schema(&directory.join("backups"), Utc::now())
+                .map_err(std::io::Error::other)?;
+            app.manage(Database(Mutex::new(workspace)));
             app.manage(desktop_backups::BackupServices {
                 controller: Mutex::new(learning_core::BackupController::default()),
                 recovery_directory: directory.join("backups"),

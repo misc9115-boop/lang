@@ -79,6 +79,7 @@ export type BackupTicket = {
     development: boolean;
     fingerprint: string;
     packReferences: PackReference[];
+    reviewItemCount: number;
   };
 };
 export type RecoveryEntry = { id: string; savedAt: string };

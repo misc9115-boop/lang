@@ -30,6 +30,11 @@ The displayed name, monogram, and geometric artwork are development placeholders
   Desktop Settings adds native folder selection, installation previews and explicit
   version changes. Backups include exact pack references and validate trusted
   historical lessons. See [pack management](docs/PACK-LIBRARY.md).
+- Versioned FSRS scheduling with persisted objective/skill observations from
+  independently reviewed lessons, atomic with lesson advancement. Schema-1
+  upgrades require verified recovery archives; version-2 backups include review
+  histories and still accept legacy restores. Review sessions/5-XP credit and
+  exercise-specific vocabulary/grammar mappings remain work. See [review storage](docs/REVIEW.md).
 
 Development fixtures cannot earn learner XP, streaks, achievements, or course
 credit. See [content status](content/README.md) and the [implementation record](docs/IMPLEMENTATION.md).
@@ -134,7 +139,7 @@ Reviewed beginner–C2 curriculum and objective coverage; placement/checkpoints;
 all audio, dictation, listening and offline speaking; extended writing/rubrics;
 learner-facing FSRS review (the [scheduling kernel](docs/REVIEW.md) is implemented);
 full reference browsing; pack downloads/media;
-tested data-transforming migrations; remaining achievements and
+future data migrations; remaining achievements and
 reminders; authenticated leaderboard/outbox; real text/voice conversation
 adapters; privacy/deletion controls; installers, signing and update consent;
 complete native accessibility, performance, platform and content QA.

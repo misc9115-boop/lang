@@ -1,9 +1,10 @@
 # Offline review scheduling
 
-This implements the scheduling kernel for SPEC.md section 7 / R-04. It is a
-library increment, not a completed learner review feature. The desktop does not
-yet enqueue review items, persist ratings, show review sessions or award review XP.
-Learner schema/backup format remain version 1 and are unchanged.
+This implements scheduling and initial history persistence for SPEC.md section 7 /
+R-04. It is not yet the complete learner review feature: the desktop does not show
+review sessions or award review XP. Schema/backup version 2 persists observations
+seeded while advancing independently reviewed lesson exercises; legacy profiles
+upgrade only after a [validated recovery archive](BACKUPS.md#schema-1-to-2-migration).
 
 ## Engine choice
 
@@ -82,16 +83,32 @@ The host must supply eligible reviewed candidates and manage larger queries.
 
 ## Integration still required
 
-Before enabling learner review, implement validated pre-migration recovery and a
-learner-schema/backup upgrade covering histories, review sessions, pending answers,
-ratings and credit. Preserve existing backups and exercise snapshots. Bind
-vocabulary/grammar/skill review identity to authored exercise mappings; the
-current text-pack format does not map every target at exercise granularity.
-Recheck installed content and current review authority before study mutations.
+Current persistence binds each observation to an exact reviewed pack reference,
+canonical lesson digest, exercise ID and objective/tested-skill key. The host
+derives these bindings from verified pack mappings. Unreviewed lessons never seed
+histories. The first resolved occurrence of a key in a lesson session supplies
+its single observation; later exercises testing that key cannot inflate ratings.
+Each seed is written in the same transaction as advancing the lesson, including
+any completion/lesson XP/achievement changes. A failed transaction rolls all back.
+Several cached packs carrying identical lesson bytes are resolved deterministically
+by pack ID/version. No renderer command accepts arbitrary ratings or histories.
+
+Histories include all original evidence plus one source per observation. Stored
+review JSON is bounded at 8 MiB per item; whole-backup bounds also apply. Read APIs
+retain history after trust is revoked, while using/exporting/restoring it requires
+matching reviewed sources. Pack removal is blocked if a review source needs that
+exact version. Backup validation also matches observations to saved graded items,
+final attempts and timestamps; it does not trust archive approval labels. These
+lesson-seeded observations cannot claim explicit Easy self-ratings.
+
+The currently authored format maps objectives and tested skills precisely at
+exercise level, so those keys can be seeded. Vocabulary/grammar target lists are
+only lesson-level: do not infer which exercise tests each target. Those mappings
+must be authored/versioned before target-specific review can be enabled.
 
 Review completion, correction flow, explicit Easy, resume/cancel, one 5-XP award
 per study day, goal/streak/first-review achievement rules and backup restore all
-need transactional storage and native/UI tests. Do not infer review completion
+still need transactional session storage, backup support and native/UI tests. Do not infer review completion
 from scheduling an item, turn practice fixtures into reviewed content, or expose
 an operational Review screen before these pieces are implemented.
 
