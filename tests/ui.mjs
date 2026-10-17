@@ -256,6 +256,9 @@ try {
     .getByRole("button", { name: "Choose backup to restore", exact: true })
     .click();
   await expect(
+    page.getByText("Review item histories", { exact: true }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("button", { name: "Restore this backup", exact: true }),
   ).toBeDisabled();
   await page

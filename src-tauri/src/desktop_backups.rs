@@ -169,7 +169,7 @@ pub async fn list_recovery_backups(app: AppHandle) -> Result<Vec<RecoveryEntry>>
     .await
 }
 fn valid_recovery_name(id: &str) -> bool {
-    id.starts_with("pre-import-")
+    (id.starts_with("pre-import-") || id.starts_with("pre-migrate-v1-to-v2-"))
         && id.ends_with(".langbackup")
         && id.len() < 150
         && id
@@ -215,12 +215,19 @@ mod tests {
             "pre-import-../../file.langbackup",
             "pre-import-C:\\file.langbackup",
             "pre-import-x.langbackup/child",
+            "pre-migrate-v1-to-v2-../../file.langbackup",
+            "pre-migrate-v1-to-v2-C:\\file.langbackup",
+            "pre-migrate-v1-to-v2-x.langbackup/child",
+            "pre-migrate-v99-to-v100-x.langbackup",
             "learner.sqlite3",
         ] {
             assert!(!valid_recovery_name(name));
         }
         assert!(valid_recovery_name(
             "pre-import-20261014T120000Z-00e31037-56d2-4578-a1f0-3c909ba0716e.langbackup"
+        ));
+        assert!(valid_recovery_name(
+            "pre-migrate-v1-to-v2-20261017T120000Z-00e31037-56d2-4578-a1f0-3c909ba0716e.langbackup"
         ));
     }
 }

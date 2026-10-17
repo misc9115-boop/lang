@@ -181,6 +181,31 @@ async function stop() {
 try {
   await start();
   await textIncludes("A place to begin your Italian.");
+  const migrationCopies = (await invoke("list_recovery_backups")).filter(
+    (entry) => entry.id.startsWith("pre-migrate-v1-to-v2-"),
+  );
+  assert.equal(migrationCopies.length, 1);
+  const migration = JSON.parse(
+    readFileSync(path.join(root, "backups", migrationCopies[0].id), "utf8"),
+  );
+  assert.equal(migration.body.version, 1);
+  assert.equal(migration.body.schemaVersion, 1);
+  assert.equal(migration.body.data.settings, null);
+  assert.equal(migration.body.data.reviewRecords, undefined);
+  async function previewFixture() {
+    const copies = await invoke("list_recovery_backups");
+    const index = copies.findIndex(
+      (entry) => entry.id === "pre-import-native-fixture.langbackup",
+    );
+    assert.ok(index >= 0);
+    await wait(
+      () =>
+        script(
+          `const buttons=[...document.querySelectorAll(".recovery-list button")].filter(b=>b.innerText.trim()==="Preview recovery copy");if(!buttons[${index}]||buttons[${index}].disabled)return false;buttons[${index}].click();return true;`,
+        ),
+      "Recovery fixture did not become usable",
+    );
+  }
   await click("C2 CEFR");
   // The time zone field uses a stable placeholder in the real application.
   await fill('input[placeholder="America/Chicago"]', "America/Chicago");
@@ -188,8 +213,8 @@ try {
   await textIncludes("Your learning path");
   assert.equal((await invoke("app_state")).settings.level, "C2");
   await click("Settings");
-  await textIncludes("Pre-import recovery copies");
-  await click("Preview recovery copy");
+  await textIncludes("Recovery copies");
+  await previewFixture();
   await textIncludes("Review before restoring");
   assert.equal(
     await script(
@@ -199,7 +224,7 @@ try {
   );
   await click("Cancel restore");
   assert.equal((await invoke("app_state")).settings.level, "C2");
-  await click("Preview recovery copy");
+  await previewFixture();
   await wait(
     () =>
       script(
@@ -211,19 +236,24 @@ try {
   await textIncludes("Backup restored.");
   assert.equal((await invoke("app_state")).settings.level, "A1");
   const recoveryCopies = await invoke("list_recovery_backups");
-  assert.equal(recoveryCopies.length, 2);
+  assert.equal(recoveryCopies.length, 3);
   const created = recoveryCopies.find(
-    (entry) => entry.id !== "pre-import-native-fixture.langbackup",
+    (entry) =>
+      entry.id.startsWith("pre-import-") &&
+      entry.id !== "pre-import-native-fixture.langbackup",
   );
   assert.ok(created, "Restore must create a separate recovery archive");
   const recovery = JSON.parse(
     readFileSync(path.join(root, "backups", created.id), "utf8"),
   );
   assert.equal(recovery.body.data.installedPackReferences.length, 1);
+  assert.equal(recovery.body.version, 2);
+  assert.equal(recovery.body.schemaVersion, 2);
+  assert.deepEqual(recovery.body.data.reviewRecords, []);
   assert.equal(recovery.body.data.settings.level, "C2");
   assert.equal(recovery.body.data.sessions.length, 0);
   console.log(
-    "PASS native IPC, preview, cancel, restore and recovery contents",
+    "PASS native v1 upgrade with verified recovery, legacy restore, IPC, preview/cancel and v2 recovery contents",
   );
   await textIncludes("Offline lesson packs");
   await click("Use version 1");
@@ -274,6 +304,12 @@ try {
   assert.equal((await invoke("pack_state")).entries[0].entry.active, true);
   assert.equal(after.settings.level, "A1");
   assert.equal(after.progress.totalXp, 0);
+  assert.equal(
+    (await invoke("list_recovery_backups")).filter((entry) =>
+      entry.id.startsWith("pre-migrate-v1-to-v2-"),
+    ).length,
+    1,
+  );
   await stop();
   console.log(
     "PASS native startup, real IPC, backup preview/cancel/restore, recovery creation, and saved draft after process restart",

@@ -253,8 +253,8 @@ fn future_versions_modes_and_missing_pack_references_are_rejected() {
     let bytes = source().export_backup(now()).unwrap();
     let target = store(false);
     for bad in [
-        modified(&bytes, |a| a.body.version = 2),
-        modified(&bytes, |a| a.body.schema_version = 2),
+        modified(&bytes, |a| a.body.version = 3),
+        modified(&bytes, |a| a.body.schema_version = 3),
         modified(&bytes, |a| a.body.development = false),
         modified(&bytes, |a| {
             a.body.data.installed_pack_references.push(PackReference {
@@ -416,4 +416,192 @@ fn editing_an_archive_cannot_approve_unreviewed_content() {
         .inspect_backup(&forged, now())
         .unwrap_err()
         .contains("reviewed lesson snapshot"));
+}
+
+fn reviewed_history_source() -> Store {
+    // Synthetic host authority for storage tests only. No human review occurred.
+    let mut store = store(true);
+    let lesson = store.lessons[0].clone();
+    let source = crate::review_storage::ReviewSource {
+        pack: PackReference {
+            pack_id: "synthetic.storage-test".into(),
+            version: 1,
+            manifest_sha256: "a".repeat(64),
+        },
+        lesson_id: lesson.id.clone(),
+        lesson_sha256: hash(&lesson).unwrap(),
+        exercise_id: lesson.exercises[0].id.clone(),
+        key: crate::review::ReviewKey {
+            curriculum_id: "synthetic.test-curriculum".into(),
+            target_kind: crate::review::ReviewTarget::Objective,
+            target_id: "synthetic.reading".into(),
+            skill: crate::content::Skill::Reading,
+        },
+    };
+    store.content.references.push(source.pack.clone());
+    store.content.review_sources.insert(source);
+    let session = store.start(&lesson.id, now()).unwrap();
+    store
+        .submit(
+            &session.id,
+            &lesson.exercises[0].id,
+            Answer::Option("a".into()),
+            &Uuid::new_v4().to_string(),
+            now(),
+        )
+        .unwrap();
+    store
+        .advance(&session.id, &lesson.exercises[0].id, now())
+        .unwrap();
+    store
+}
+
+#[test]
+fn checksummed_review_changes_cannot_forge_exercise_authority_or_observations() {
+    let store = reviewed_history_source();
+    let bytes = store.export_backup(now()).unwrap();
+    let changes = [
+        ("evidence", serde_json::json!(false)),
+        ("easy", serde_json::json!(true)),
+        ("request", serde_json::json!(Uuid::new_v4().to_string())),
+        (
+            "time",
+            serde_json::json!((now() + chrono::Duration::days(1)).to_rfc3339()),
+        ),
+        ("digest", serde_json::json!("b".repeat(64))),
+        ("source", serde_json::json!("dev.cafe.reading")),
+        ("engine", serde_json::json!("future-engine")),
+    ];
+    for (change, replacement) in changes {
+        let forged = modified(&bytes, |archive| {
+            let record = &mut archive.body.data.review_records.as_mut().unwrap()[0];
+            let mut value = serde_json::to_value(&record).unwrap();
+            match change {
+                "evidence" => {
+                    value["history"]["observations"][0]["evidence"]["firstCorrect"] = replacement
+                }
+                "easy" => value["history"]["observations"][0]["explicitEasy"] = replacement,
+                "request" => value["history"]["observations"][0]["requestId"] = replacement,
+                "time" => value["history"]["observations"][0]["reviewedAt"] = replacement,
+                "digest" => value["sources"][0]["pack"]["manifestSha256"] = replacement,
+                "source" => value["sources"][0]["exerciseId"] = replacement,
+                "engine" => value["history"]["schedulerVersion"] = replacement,
+                _ => unreachable!(),
+            }
+            *record = serde_json::from_value(value).unwrap();
+        });
+        assert!(
+            store.inspect_backup(&forged, now()).is_err(),
+            "forgery accepted: {change}"
+        );
+    }
+    let duplicate = modified(&bytes, |archive| {
+        let records = archive.body.data.review_records.as_mut().unwrap();
+        records.push(records[0].clone());
+    });
+    assert!(store
+        .inspect_backup(&duplicate, now())
+        .unwrap_err()
+        .contains("Duplicate review"));
+}
+
+#[test]
+fn legacy_restore_replaces_reviews_and_v2_recovery_can_restore_them_back() {
+    let mut store = reviewed_history_source();
+    let bytes = store.export_backup(now()).unwrap();
+    assert_eq!(
+        store
+            .inspect_backup(&bytes, now())
+            .unwrap()
+            .review_item_count,
+        1
+    );
+    let legacy = modified(&bytes, |archive| {
+        archive.body.version = 1;
+        archive.body.schema_version = 1;
+        archive.body.data.review_records = None;
+    });
+    assert_eq!(
+        store
+            .inspect_backup(&legacy, now())
+            .unwrap()
+            .review_item_count,
+        0
+    );
+    let fingerprint = store.backup_fingerprint().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let result = store
+        .restore_backup(&legacy, &fingerprint, directory.path(), now())
+        .unwrap();
+    assert!(store.review_histories().unwrap().is_empty());
+    let recovery = read_backup_file(&result.recovery_path).unwrap();
+    assert_eq!(parse_archive(&recovery, true).unwrap().body.version, 2);
+    assert_eq!(
+        store
+            .inspect_backup(&recovery, now())
+            .unwrap()
+            .review_item_count,
+        1
+    );
+    let fingerprint = store.backup_fingerprint().unwrap();
+    store
+        .restore_backup(&recovery, &fingerprint, directory.path(), now())
+        .unwrap();
+    assert_eq!(store.review_histories().unwrap().len(), 1);
+}
+
+#[test]
+fn corrupt_review_rows_and_oversized_payloads_are_not_exported_or_silently_dropped() {
+    let mut store = reviewed_history_source();
+    let before = store.export_backup(now()).unwrap();
+    store
+        .connection
+        .execute("UPDATE review_histories SET review_key='mismatched'", [])
+        .unwrap();
+    assert!(store.review_histories().is_err());
+    assert!(store.export_backup(now()).is_err());
+    store
+        .connection
+        .execute("DELETE FROM review_histories", [])
+        .unwrap();
+    let fingerprint = store.backup_fingerprint().unwrap();
+    store
+        .restore_backup(
+            &before,
+            &fingerprint,
+            tempfile::tempdir().unwrap().path(),
+            now(),
+        )
+        .unwrap();
+    store
+        .connection
+        .execute(
+            "UPDATE review_histories SET record=zeroblob(?1)",
+            [crate::review_storage::MAX_STORED_REVIEW_BYTES as i64 + 1],
+        )
+        .unwrap();
+    assert!(store.review_histories().is_err());
+    assert!(store.export_backup(now()).is_err());
+}
+
+#[test]
+fn changing_review_history_invalidates_an_existing_restore_preview() {
+    let mut store = reviewed_history_source();
+    let archive = store.export_backup(now()).unwrap();
+    let mut controller = BackupController::default();
+    let ticket = controller.prepare(&store, archive, now()).unwrap();
+    store
+        .connection
+        .execute("DELETE FROM review_histories", [])
+        .unwrap();
+    assert!(controller
+        .restore(
+            &mut store,
+            &ticket.token,
+            tempfile::tempdir().unwrap().path(),
+            now()
+        )
+        .unwrap_err()
+        .contains("changed after"));
+    assert!(store.review_histories().unwrap().is_empty());
 }

@@ -302,14 +302,45 @@ serialized replay, session/request deduplication, unchanged state after failure,
 full-history limits, UTC/DST behavior and deterministic due/practice selection.
 Windows/macOS CI results are recorded on this increment's pull request.
 
+### Review storage and recovery migration — 2026-10-17
+
+Learner schema/archive 2 adds persisted FSRS observations with independently
+verified pack/lesson/exercise provenance. Advancing a reviewed lesson atomically
+seeds its explicitly mapped objective/tested-skill items, at most once per item
+per session. Existing first-attempt evidence, lesson XP and draft isolation remain
+intact. Vocabulary/grammar mappings are not inferred from lesson-level lists.
+Review sessions, explicit Easy and 5-XP credit remain subsequent work.
+
+Existing schema-1 data upgrades only after a validated, fsynced and reread
+version-1 recovery archive, under the same write reservation as the schema change.
+Schema/table creation roll back together. Legacy restores explicitly replace
+review histories; their version-2 recovery copies preserve the replaced data.
+The preview shows review-history count and the recovery list labels upgrade
+copies separately. [BACKUPS.md](BACKUPS.md) and [REVIEW.md](REVIEW.md) record the
+full contracts and remaining boundaries. No dependency or real review registry
+change; SPEC.md and café content remain unchanged.
+
+Local Windows: **108 core tests plus 1 desktop test passed**; two ignored
+subprocess helpers are invoked by passing crash-recovery tests. Formatting,
+workspace Clippy, release compilation and frontend build passed with zero Svelte
+errors/warnings. New tests cover failed/abruptly interrupted migrations, recovery
+write/DDL failure, writer exclusion, legacy round trips, review seeding/replay,
+atomic credit rollback, revocation, tampered sources/evidence, limits and stale
+restore previews. Connected-browser checks against disposable real Rust/SQLite
+verified preview/confirmation/restore/recovery labels and 720px dark/200% text
+with document width 705px and no horizontal overflow. Native upgrade/restart and
+platform CI results are recorded on the pull request; native file dialogs and
+resource/minimum-platform gates remain unverified.
+
 ## Next implementation work
 
 1. Verify native file dialogs manually; extend failure/crash coverage and minimum
    OS/architecture checks beyond the baseline CI hosts.
 2. Extend packs to download/media/alternatives and
    author the complete objective map and lessons with real review.
-3. Implement FSRS review, full exercises/media and accessible alternatives,
-   resource-controlled pack management, and tested pre-migration recovery.
+3. Implement learner review sessions/credit and precise vocabulary/grammar
+   mappings, full exercises/media and accessible alternatives, and
+   resource-controlled pack management.
 4. Implement independent leaderboard and text/voice conversation adapters, with
    privacy, cancellation, credential/outbox and real-service tests.
 5. Finish full beginner–C2 coverage and all public-release gates in SPEC.md.

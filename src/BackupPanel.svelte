@@ -87,9 +87,9 @@
   <span class="eyebrow">SAVED ON YOUR COMPUTER</span>
   <h2>Backups &amp; recovery</h2>
   <p>
-    Export your saved settings, progress, lesson drafts, and local answer
-    reports. Backups are local, unencrypted files; choose where to keep them.
-    Media files are excluded.
+    Export your saved settings, progress, lesson drafts, review item histories
+    and local answer reports. Backups are local, unencrypted files; choose where
+    to keep them. Media files are excluded.
   </p>
   <div class="backup-actions">
     <button
@@ -128,6 +128,10 @@
           <dt>Completed lessons</dt>
           <dd>{ticket.preview.completedLessons}</dd>
         </div>
+        <div>
+          <dt>Review item histories</dt>
+          <dd>{ticket.preview.reviewItemCount}</dd>
+        </div>
       </dl>
       <p>
         Referenced pack versions: {ticket.preview.packReferences.length}.
@@ -144,9 +148,9 @@
           >Development backup · draft credit remains excluded</span
         >{/if}
       <p>
-        Restore replaces your current local profile and study history. A
-        verified recovery copy of the existing history is saved before
-        replacement.
+        Restore replaces your current local profile, study history and review
+        item histories. A verified recovery copy of the existing history is
+        saved before replacement.
       </p>
       <label class="checkbox"
         ><input type="checkbox" bind:checked={confirmed} disabled={busy} /> I understand
@@ -164,10 +168,11 @@
     </section>
   {/if}
   <div class="recovery-list">
-    <h3>Pre-import recovery copies</h3>
+    <h3>Recovery copies</h3>
     <p>
-      A recovery copy is created whenever you restore. Choosing one opens the
-      same validation and confirmation flow.
+      A verified recovery copy is created before a restore or an upgrade of
+      existing learner data. Choosing one opens the same validation and
+      confirmation flow.
     </p>
     {#if listError}<p role="alert" class="muted">
         Recovery list unavailable: {listError}
@@ -178,7 +183,13 @@
     {:else if recovery.length}
       <ul>
         {#each recovery as entry}<li>
-            <span>{new Date(entry.savedAt).toLocaleString()}</span><button
+            <span
+              >{entry.id.startsWith("pre-migrate-")
+                ? "Before learner-data upgrade"
+                : "Before restore"} · {new Date(
+                entry.savedAt,
+              ).toLocaleString()}</span
+            ><button
               class="text-button"
               disabled={busy}
               onclick={() => run(() => previewRecovery(entry.id))}

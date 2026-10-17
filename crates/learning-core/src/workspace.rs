@@ -1,8 +1,13 @@
 //! Coordinates installed content with learner snapshots; never grants review trust.
-use crate::{content::EditorialStatus, pack_library::*, AppState, Lesson, Store};
+use crate::{
+    content::EditorialStatus,
+    pack_library::*,
+    review::{ReviewKey, ReviewTarget},
+    review_storage::ReviewSource,
+    AppState, Lesson, Store,
+};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::{
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
@@ -128,17 +133,57 @@ impl StudyWorkspace {
                                 Ok(pack) => {
                                     record.title = Some(pack.manifest.title);
                                     record.editorial_status = Some(pack.manifest.editorial_status);
-                                    context.references.push(PackReference {
+                                    let reference = PackReference {
                                         pack_id: record.entry.pack_id.clone(),
                                         version: record.entry.version,
                                         manifest_sha256: record.entry.manifest_sha256.clone(),
-                                    });
+                                    };
+                                    context.references.push(reference.clone());
                                     if pack.report.trusted_review {
                                         for lesson in pack.lessons {
-                                            if let Ok(bytes) = serde_json::to_vec(&lesson) {
-                                                context
-                                                    .reviewed_snapshots
-                                                    .insert(format!("{:x}", Sha256::digest(bytes)));
+                                            let digest = match crate::backup::hash(&lesson) {
+                                                Ok(digest) => digest,
+                                                Err(error) => {
+                                                    state.issues.push(error);
+                                                    continue;
+                                                }
+                                            };
+                                            context.reviewed_snapshots.insert(digest.clone());
+                                            if let Some(record) = pack
+                                                .manifest
+                                                .lessons
+                                                .iter()
+                                                .find(|r| r.lesson_id == lesson.id)
+                                            {
+                                                for exercise in &record.exercises {
+                                                    for objective in &exercise.objectives {
+                                                        for skill in &objective.tested_skills {
+                                                            let key = ReviewKey {
+                                                                curriculum_id: pack
+                                                                    .manifest
+                                                                    .curriculum
+                                                                    .id
+                                                                    .clone(),
+                                                                target_kind:
+                                                                    ReviewTarget::Objective,
+                                                                target_id: objective
+                                                                    .objective_id
+                                                                    .clone(),
+                                                                skill: *skill,
+                                                            };
+                                                            let source = ReviewSource {
+                                                                pack: reference.clone(),
+                                                                lesson_id: lesson.id.clone(),
+                                                                lesson_sha256: digest.clone(),
+                                                                exercise_id: exercise
+                                                                    .exercise_id
+                                                                    .clone(),
+                                                                key,
+                                                            };
+                                                            context.review_sources.insert(source);
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -210,6 +255,18 @@ impl StudyWorkspace {
         Ok(self.pack_state())
     }
     pub fn change_pack(&mut self, action: &str, id: &str, version: u32) -> Result<PackState> {
+        if action == "remove"
+            && self.store.review_histories()?.iter().any(|r| {
+                r.sources()
+                    .iter()
+                    .any(|s| s.pack.pack_id == id && s.pack.version == version)
+            })
+        {
+            return Err(
+                "Saved review history needs this pack version. You can deactivate it instead."
+                    .into(),
+            );
+        }
         let library = self.library.as_mut().map_err(|e| e.clone())?;
         match action {
             "activate" => library.activate(id, version)?,
@@ -237,5 +294,13 @@ impl StudyWorkspace {
             _ => return Err("Unsupported pack action.".into()),
         }
         Ok(self.pack_state())
+    }
+    pub fn migrate_schema(
+        &mut self,
+        directory: &Path,
+        now: DateTime<Utc>,
+    ) -> Result<Option<PathBuf>> {
+        self.pack_state();
+        self.store.migrate_schema(directory, now)
     }
 }

@@ -76,6 +76,8 @@ struct LearnerData {
     achievements: Vec<Grant>,
     reports: Vec<Report>,
     installed_pack_references: Vec<PackReference>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    review_records: Option<Vec<crate::review_storage::StoredReview>>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -158,6 +160,7 @@ pub struct BackupPreview {
     pub development: bool,
     pub fingerprint: String,
     pub pack_references: Vec<PackReference>,
+    pub review_item_count: usize,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -225,10 +228,81 @@ impl BackupController {
 }
 
 impl Store {
+    /// Upgrade only after the host has supplied current installed-content trust.
+    /// Keep a write reservation from the snapshot through the atomic schema commit.
+    pub fn migrate_schema(
+        &mut self,
+        directory: &Path,
+        now: DateTime<Utc>,
+    ) -> Result<Option<PathBuf>> {
+        self.migrate_schema_with(directory, now, |_| Ok(()))
+    }
+
+    fn migrate_schema_with(
+        &mut self,
+        directory: &Path,
+        now: DateTime<Utc>,
+        after_schema: impl FnOnce(&Connection) -> Result<()>,
+    ) -> Result<Option<PathBuf>> {
+        match self.schema_version()? {
+            2 => return Ok(None),
+            1 => {}
+            _ => {
+                return Err(
+                    "Unsupported learner schema; migration did not change your data.".into(),
+                )
+            }
+        }
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(error)?;
+        if crate::review_storage::schema_version(&tx)? != 1 {
+            return Err("Learner schema changed before migration. Reopen the profile.".into());
+        }
+        let data = read_data(&tx, &self.content.references)?;
+        let bytes = archive_bytes(data, self.development_build, now, 1)?;
+        let archive = parse_archive(&bytes, self.development_build)?;
+        validate_data(
+            &archive.body.data,
+            self.development_build,
+            &self.lessons,
+            &self.content,
+            now,
+        )?;
+        fs::create_dir_all(directory).map_err(error)?;
+        let path = directory.join(format!(
+            "pre-migrate-v1-to-v2-{}-{}.langbackup",
+            now.format("%Y%m%dT%H%M%SZ"),
+            Uuid::new_v4()
+        ));
+        write_new_backup(&path, &bytes)?;
+        let saved = read_backup_file(&path)?;
+        let checked = parse_archive(&saved, self.development_build)?;
+        if checked.sha256 != archive.sha256 {
+            return Err(
+                "Pre-migration recovery verification failed; no schema was changed.".into(),
+            );
+        }
+        validate_data(
+            &checked.body.data,
+            self.development_build,
+            &self.lessons,
+            &self.content,
+            now,
+        )?;
+        // Both table creation and user_version roll back together on failure/crash.
+        tx.execute_batch(include_str!("review_schema.sql"))
+            .map_err(error)?;
+        after_schema(&tx)?;
+        tx.commit().map_err(error)?;
+        Ok(Some(path))
+    }
+
     pub fn export_backup(&self, now: DateTime<Utc>) -> Result<Vec<u8>> {
         let tx = self.connection.unchecked_transaction().map_err(error)?;
         let data = read_data(&tx, &self.content.references)?;
-        let bytes = archive_bytes(data, self.development_build, now)?;
+        let bytes = archive_bytes(data, self.development_build, now, self.schema_version()?)?;
         // Validate what we are about to call a backup, not just its serialization.
         self.inspect_backup(&bytes, now)?;
         tx.commit().map_err(error)?;
@@ -262,6 +336,12 @@ impl Store {
             development: archive.body.development,
             fingerprint: archive.sha256,
             pack_references: archive.body.data.installed_pack_references,
+            review_item_count: archive
+                .body
+                .data
+                .review_records
+                .as_ref()
+                .map_or(0, Vec::len),
         })
     }
 
@@ -272,6 +352,9 @@ impl Store {
         recovery_directory: &Path,
         now: DateTime<Utc>,
     ) -> Result<RestoreResult> {
+        if self.schema_version()? != 2 {
+            return Err("Upgrade the learner database before restoring a backup.".into());
+        }
         // This candidate never touches the live database, even for a valid checksum.
         let archive = parse_archive(bytes, self.development_build)?;
         let candidate = validate_data(
@@ -295,7 +378,7 @@ impl Store {
         }
         // Hold the write lock so the verified recovery snapshot is the exact state
         // being replaced, including changes from another app process.
-        let recovery = archive_bytes(current, self.development_build, now)?;
+        let recovery = archive_bytes(current, self.development_build, now, 2)?;
         let checked = parse_archive(&recovery, self.development_build)?;
         validate_data(
             &checked.body.data,
@@ -320,7 +403,7 @@ impl Store {
             );
         }
         // Only hard-coded, parameterized statements ever reach the live DB.
-        tx.execute_batch("DELETE FROM answer_reports; DELETE FROM attempts; DELETE FROM session_items; DELETE FROM xp_ledger; DELETE FROM sessions; DELETE FROM achievements; DELETE FROM study_days; DELETE FROM profile;").map_err(error)?;
+        tx.execute_batch("DELETE FROM review_histories; DELETE FROM answer_reports; DELETE FROM attempts; DELETE FROM session_items; DELETE FROM xp_ledger; DELETE FROM sessions; DELETE FROM achievements; DELETE FROM study_days; DELETE FROM profile;").map_err(error)?;
         insert_data(&tx, &archive.body.data)?;
         tx.commit().map_err(error)?;
         Ok(RestoreResult {
@@ -362,11 +445,16 @@ pub fn write_new_backup(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn archive_bytes(data: LearnerData, development: bool, now: DateTime<Utc>) -> Result<Vec<u8>> {
+fn archive_bytes(
+    data: LearnerData,
+    development: bool,
+    now: DateTime<Utc>,
+    version: u32,
+) -> Result<Vec<u8>> {
     let body = ArchiveBody {
         format: "lang-learner-backup".into(),
-        version: 1,
-        schema_version: 1,
+        version,
+        schema_version: version,
         created_at: now,
         development,
         data,
@@ -387,8 +475,12 @@ fn parse_archive(bytes: &[u8], development: bool) -> Result<Archive> {
     let archive: Archive = serde_json::from_slice(bytes)
         .map_err(|_| "This file is not a supported learner backup.".to_string())?;
     if archive.body.format != "lang-learner-backup"
-        || archive.body.version != 1
-        || archive.body.schema_version != 1
+        || !matches!(
+            (archive.body.version, archive.body.schema_version),
+            (1, 1) | (2, 2)
+        )
+        || (archive.body.version == 1 && archive.body.data.review_records.is_some())
+        || (archive.body.version == 2 && archive.body.data.review_records.is_none())
     {
         return Err(
             "This backup's format or schema version is not supported. No data was changed.".into(),
@@ -404,14 +496,27 @@ fn parse_archive(bytes: &[u8], development: bool) -> Result<Archive> {
 }
 
 fn read_data(connection: &Connection, references: &[PackReference]) -> Result<LearnerData> {
+    let version = crate::review_storage::schema_version(connection)?;
+    let (review_rows, review_bytes): (i64, i64) = if version == 2 {
+        connection.query_row("SELECT COUNT(*), COALESCE(SUM(length(CAST(record AS BLOB))),0) FROM review_histories", [], |r| Ok((r.get(0)?,r.get(1)?))).map_err(error)?
+    } else {
+        (0, 0)
+    };
     let count: i64 = connection.query_row("SELECT (SELECT COUNT(*) FROM sessions)+(SELECT COUNT(*) FROM session_items)+(SELECT COUNT(*) FROM attempts)+(SELECT COUNT(*) FROM xp_ledger)+(SELECT COUNT(*) FROM study_days)+(SELECT COUNT(*) FROM achievements)+(SELECT COUNT(*) FROM answer_reports)",[],|r|r.get(0)).map_err(error)?;
     let text_bytes: i64=connection.query_row("SELECT COALESCE((SELECT SUM(length(CAST(lesson_snapshot AS BLOB))) FROM sessions),0)+COALESCE((SELECT SUM(COALESCE(length(CAST(draft AS BLOB)),0)+COALESCE(length(CAST(feedback AS BLOB)),0)) FROM session_items),0)+COALESCE((SELECT SUM(length(CAST(note AS BLOB))) FROM answer_reports),0)",[],|r|r.get(0)).map_err(error)?;
-    if count > MAX_RECORDS as i64 || text_bytes > MAX_BACKUP_BYTES as i64 {
+    if count + review_rows > MAX_RECORDS as i64
+        || text_bytes + review_bytes > MAX_BACKUP_BYTES as i64
+    {
         return Err(
             "The learner history exceeds this version's backup limits. No history was truncated."
                 .into(),
         );
     }
+    let review_records = if version == 2 {
+        Some(crate::review_storage::read_all(connection)?)
+    } else {
+        None
+    };
     let settings = connection
         .query_row("SELECT settings FROM profile WHERE id=1", [], |r| {
             r.get::<_, String>(0)
@@ -600,6 +705,7 @@ fn read_data(connection: &Connection, references: &[PackReference]) -> Result<Le
         achievements,
         reports,
         installed_pack_references: references.to_vec(),
+        review_records,
     })
 }
 
@@ -643,6 +749,9 @@ fn insert_data(connection: &Connection, data: &LearnerData) -> Result<()> {
     for r in &data.reports {
         connection.execute("INSERT INTO answer_reports(id,session_id,exercise_id,note,created_at) VALUES(?1,?2,?3,?4,?5)",params![r.id,r.session_id,r.exercise_id,r.note,r.created_at.to_rfc3339()]).map_err(error)?;
     }
+    for record in data.review_records.as_deref().unwrap_or_default() {
+        crate::review_storage::insert_record(connection, record)?;
+    }
     Ok(())
 }
 
@@ -659,7 +768,14 @@ fn validate_data(
         + data.xp.len()
         + data.days.len()
         + data.achievements.len()
-        + data.reports.len();
+        + data.reports.len()
+        + data
+            .review_records
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|r| 1 + 2 * r.history().observations().len())
+            .sum::<usize>();
     if count > MAX_RECORDS {
         return Err("The backup exceeds this version's 100,000 record limit.".into());
     }
@@ -686,12 +802,15 @@ fn validate_data(
         .collect::<Result<HashSet<_>>>()?;
     approved_snapshots.extend(context.reviewed_snapshots.iter().cloned());
     let mut sessions = HashMap::new();
+    let mut session_hashes = HashMap::new();
     for s in &data.sessions {
         uuid(&s.id)?;
         validate_lesson(&s.lesson)?;
-        if !s.practice_only && !approved_snapshots.contains(&hash(&s.lesson)?) {
+        let snapshot_hash = hash(&s.lesson)?;
+        if !s.practice_only && !approved_snapshots.contains(&snapshot_hash) {
             return Err("A reviewed lesson snapshot is not available in the installed catalogue. Install the matching reviewed content before restoring this backup.".into());
         }
+        session_hashes.insert(s.id.as_str(), snapshot_hash);
         if s.lesson.exercises.len() > 1000
             || s.lesson.id.len() > 256
             || sessions.insert(s.id.as_str(), s).is_some()
@@ -786,10 +905,12 @@ fn validate_data(
             .or_default()
             .push(a);
     }
+    let mut last_attempts = HashMap::new();
     for ((id, position), i) in &items {
         let mut history = attempts.remove(&(*id, *position)).unwrap_or_default();
         history.sort_by_key(|a| a.sequence);
         if let (Some(first), Some(last)) = (history.first(), history.last()) {
+            last_attempts.insert((*id, *position), *last);
             if history.windows(2).any(|pair| {
                 pair[0].correct || pair[0].revealed || (pair[0].hinted && !pair[1].hinted)
             }) || i.revealed != last.revealed
@@ -865,6 +986,59 @@ fn validate_data(
             return Err("Invalid local answer report in backup.".into());
         }
     }
+    let mut review_keys = HashSet::new();
+    for record in data.review_records.as_deref().unwrap_or_default() {
+        record.validate_structure()?;
+        record.validate_authority(context)?;
+        if !review_keys.insert(record.history().key()) {
+            return Err("Duplicate review item history in backup.".into());
+        }
+        for (observation, source) in record.history().observations().iter().zip(record.sources()) {
+            let id = observation.session_id.to_string();
+            let session = sessions
+                .get(id.as_str())
+                .ok_or("Review observation has no saved session.")?;
+            let position = session
+                .lesson
+                .exercises
+                .iter()
+                .position(|e| e.id == source.exercise_id)
+                .ok_or("Review source exercise is missing.")? as u32;
+            let item = items
+                .get(&(id.as_str(), position))
+                .ok_or("Review source evidence is missing.")?;
+            let feedback = item
+                .feedback
+                .as_ref()
+                .ok_or("Review source feedback is missing.")?;
+            let evidence = crate::review::ReviewEvidence {
+                first_correct: item.first_correct.unwrap_or(false),
+                final_correct: feedback.correct,
+                hinted: item.hinted,
+                revealed: item.revealed,
+            };
+            let last = last_attempts
+                .get(&(id.as_str(), position))
+                .ok_or("Review source attempt is missing.")?;
+            if session.practice_only
+                || !item.resolved
+                || source.lesson_id != session.lesson.id
+                || session_hashes.get(id.as_str()) != Some(&source.lesson_sha256)
+                || !data.installed_pack_references.contains(&source.pack)
+                || observation.evidence != evidence
+                || observation.explicit_easy
+                || observation.reviewed_at < session.started_at
+                || observation.reviewed_at > now
+                || session
+                    .completed_at
+                    .is_some_and(|end| observation.reviewed_at > end)
+                || last.request_id != observation.request_id.to_string()
+                || last.created_at > observation.reviewed_at
+            {
+                return Err("Review observation does not match its graded lesson evidence.".into());
+            }
+        }
+    }
     for g in &data.achievements {
         if !["first_lesson", "100_xp", "7_day_streak"].contains(&g.id.as_str()) {
             return Err("This archive contains an unsupported achievement.".into());
@@ -890,6 +1064,9 @@ fn validate_data(
     Ok(candidate)
 }
 
+#[cfg(test)]
+#[path = "migration_tests.rs"]
+mod migration_tests;
 #[cfg(test)]
 #[path = "backup_tests.rs"]
 mod tests;

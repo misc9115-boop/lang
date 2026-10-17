@@ -3,6 +3,7 @@ pub mod content;
 mod model;
 pub mod pack_library;
 pub mod review;
+pub mod review_storage;
 mod scoring;
 mod store;
 mod workspace;
