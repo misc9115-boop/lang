@@ -279,6 +279,29 @@ folder-selection adapter and native activation/persistence over actual IPC.
 Native folder/open/save dialogs, full accessibility and resource budgets remain
 unverified. SPEC.md, the café payload and dependency locks are unchanged.
 
+### Review scheduling kernel — 2026-10-17
+
+The shared core now wraps the pinned upstream `fsrs` 6.6.2 scheduling API with
+retention 0.9 and rating mapping 1. Versioned histories preserve first-attempt
+evidence, replay derived memory state, reject conflicting/duplicate session
+ratings and protect exact retries. Stable curriculum/target/skill keys keep
+different evidence separate. Due-first deterministic selection also permits
+explicit practice without due items. [REVIEW.md](REVIEW.md) records engine choice,
+dependencies/license, UTC day/interval rules, bounds and the integration contract.
+
+This kernel is not yet connected to learner SQLite, backups, XP or the desktop.
+It does not change schema/backup version 1 or fabricate reviewed content. A
+validated migration/recovery path, exercise-to-target mapping, transactional
+review sessions/credit and native UI remain necessary before enabling review.
+
+Local Windows validation: **92 core tests and 1 desktop test passed**, including
+16 scheduler tests and the existing backup/pack/learner suites. Formatting,
+workspace Clippy, release compilation and the frontend build passed; Svelte
+reported zero errors/warnings. Tests cover published initial FSRS states,
+serialized replay, session/request deduplication, unchanged state after failure,
+full-history limits, UTC/DST behavior and deterministic due/practice selection.
+Windows/macOS CI results are recorded on this increment's pull request.
+
 ## Next implementation work
 
 1. Verify native file dialogs manually; extend failure/crash coverage and minimum

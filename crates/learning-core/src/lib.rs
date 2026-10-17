@@ -2,6 +2,7 @@ mod backup;
 pub mod content;
 mod model;
 pub mod pack_library;
+pub mod review;
 mod scoring;
 mod store;
 mod workspace;
